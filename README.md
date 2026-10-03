@@ -89,48 +89,106 @@ The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 f
 ## Part 3: Atlas backend and encrypted offline bridge
 
 [Backend architecture, integration endpoints and limits](docs/backend-part3.md).
-The original fixture demo stays available. Windows PowerShell secure setup:
+The original fixture demo stays available. The app reads process environment
+variables only (`.env.example` is a template, not auto-loaded).
+
+### Windows PowerShell — fixture demo (SQLite, unencrypted, mock extractor)
 
 ```powershell
 Set-Location C:\Users\ariya\MaternalData-Automation
 python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-$env:DAYONE_STORAGE = "mongodb"
-$env:DAYONE_MONGODB_URI = "mongodb+srv://USER:PASSWORD@CLUSTER/dayone"
-$env:DAYONE_MONGODB_DATABASE = "dayone"
-# Generate ONCE and back up securely; reuse the SAME key on subsequent starts.
-$env:DAYONE_ENCRYPTION_KEY = python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-$env:DAYONE_API_TOKEN = python -c "import secrets; print(secrets.token_urlsafe(32))"
-$env:DAYONE_EXTRACTOR = "external"
+python -m unittest discover -s tests -v
 python -m dayone --host 127.0.0.1 --port 8000
 ```
 
-Replace the URI with your Atlas database user's SRV URI and allow your IP in Atlas.
-No URI was configured during implementation. `.env.example` documents variables;
-the app reads environment variables directly. Do not regenerate the encryption key
-for an existing database. Browser login: username `dayone`, password = API token.
-`external` waits for Fatma's worker; leave `DAYONE_EXTRACTOR` unset for fixture mode.
-Real uploaded photos need the real extractor or manual handling, not fixture lookup.
+### Windows PowerShell — Atlas + encrypted bridge
 
-In another PowerShell window, activate the same venv and set the same token and your
-saved encryption key. Atlas has no automatic demo sender/patient initialization:
+Do **not** generate a new `DAYONE_ENCRYPTION_KEY` if a database already exists;
+paste the saved key instead. Allow this workstation's IP in Atlas Network Access.
+Create a database user limited to the DayOne database. Set User/Password/Cluster
+in the SRV URI; never commit it.
 
 ```powershell
+Set-Location C:\Users\ariya\MaternalData-Automation
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+
+$env:DAYONE_STORAGE = "mongodb"
+$env:DAYONE_MONGODB_URI = "mongodb+srv://USER:PASSWORD@CLUSTER/?retryWrites=true&w=majority"
+$env:DAYONE_MONGODB_DATABASE = "dayone"
+# First database only. If a key already exists, paste it here instead of this line.
+$env:DAYONE_ENCRYPTION_KEY = (python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())").Trim()
+$env:DAYONE_API_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))").Trim()
+$env:DAYONE_EXTRACTOR = "external"
+
+@("DAYONE_STORAGE","DAYONE_MONGODB_URI","DAYONE_MONGODB_DATABASE","DAYONE_ENCRYPTION_KEY","DAYONE_API_TOKEN","DAYONE_EXTRACTOR") | ForEach-Object {
+  "{0} set={1} length={2}" -f $_, [bool][Environment]::GetEnvironmentVariable($_, "Process"), ([Environment]::GetEnvironmentVariable($_, "Process") + "").Length
+}
+
+python -m dayone --host 127.0.0.1 --port 8000
+```
+
+Browser login: username `dayone`, password = API token.
+`DAYONE_EXTRACTOR=external` is the real Fatma contract (claim/result + leased originals).
+Leave it unset only for the fixture extractor (mock; looks up `1-1.jpg`+`1-4.jpg` / `1-5.jpg`).
+`POST /api/whatsapp/uploads` is Aymane's authenticated **bridge** (not Meta's webhook envelope).
+The left-phone simulator (`/api/whatsapp/messages` + `dayone/static/`) is a mock.
+
+Atlas does not seed senders. In a **second** PowerShell window, activate the same venv
+and set the **same** token and encryption key (do not generate a second key):
+
+```powershell
+Set-Location C:\Users\ariya\MaternalData-Automation
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+$env:DAYONE_API_TOKEN = "<paste-the-same-token>"
+$env:DAYONE_ENCRYPTION_KEY = "<paste-the-same-saved-key>"
 $headers = @{ Authorization = "Bearer $env:DAYONE_API_TOKEN"; "X-Reviewer" = "ariyan" }
 $body = @{ facility_id = "FAC-TEST"; facility_name = "Demo facility"; sender_id = "whatsapp:+212600000001"; label = "Demo sender" } | ConvertTo-Json
 Invoke-RestMethod http://127.0.0.1:8000/api/admin/senders -Method Post -Headers $headers -ContentType application/json -Body $body
 python -m dayone.offline capture "data/Paper Registry/1-1.jpg" --sender "whatsapp:+212600000001" --message-id "wamid.edge-1" --group "scan-1"
 python -m dayone.offline capture "data/Paper Registry/1-5.jpg" --sender "whatsapp:+212600000001" --message-id "wamid.edge-2" --group "scan-1"
 python -m dayone.offline sync --url http://127.0.0.1:8000
+```
+
+Live Atlas checks must use a **separate test database**, never `dayone` production data.
+`LiveAtlasTest` creates and drops only `dayone_test_<uuid>`:
+
+```powershell
+$env:DAYONE_TEST_MONGODB_URI = $env:DAYONE_MONGODB_URI
+python -m unittest tests.test_mongo_store.LiveAtlasTest -v
 python -m unittest discover -s tests -v
 ```
+
+The Atlas user must be allowed to create/drop those `dayone_test_*` databases (or use a
+separate test cluster). Unit tests without `DAYONE_TEST_MONGODB_URI` use an in-memory
+Mongo double and do **not** prove Atlas connectivity.
 
 Implemented: encrypted Atlas records/originals, grouped intake, durable encrypted
 outbox, leased extraction handoff, retry deduplication, stale edit/visit rejection,
 selected-field updates in the review UI, corrections and timeline history.
 The Atlas compatibility adapter runs existing SQL only in memory and reads all
 records per request; this preserves the team code but is intended for MVP scale.
-Real WhatsApp transport and OCR remain external teammate integrations. The simulator
-and fixture extractor are mocks. Live Atlas testing requires your configured URI;
-see the dedicated optional test instructions in the backend document.
+
+## Simple Atlas setup in Antigravity
+
+Open Antigravity's PowerShell terminal in this folder and run:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m dayone.setup
+python -m dayone
+```
+
+The wizard asks privately for your real Atlas connection string. It retains any
+existing encryption key; if none is configured, paste the saved key or type NEW
+only for an empty database. Configuration is saved in Git-ignored `.env` and loaded
+at server/offline CLI startup. Explicit environment variables take precedence.
+Back up this private file securely. Do not commit it or share its contents.
+Browser login is `dayone`, with the `DAYONE_API_TOKEN` value in your local `.env`.
+The wizard configures external extraction; Fatma's worker is still required.
+Setup saves configuration; it does not prove live Atlas connectivity.

@@ -12,10 +12,14 @@ from .store import SCHEMA_SQL, TABLES
 
 class MongoStore:
     def __init__(self, uri, database="dayone", *, cipher=None, client=None):
-        from pymongo import MongoClient
-        if not uri or not uri.startswith("mongodb+srv://"):
+        uri = (uri or "").strip()
+        database = (database or "dayone").strip() or "dayone"
+        if not uri.startswith("mongodb+srv://"):
             raise ValueError("Configure DAYONE_MONGODB_URI with an Atlas mongodb+srv URI")
-        self.client = client or MongoClient(uri, serverSelectionTimeoutMS=5000, tls=True)
+        if client is None:
+            from pymongo import MongoClient
+            client = MongoClient(uri, serverSelectionTimeoutMS=5000, tls=True)
+        self.client = client
         self.db = self.client[database]
         self.cipher = cipher or Cipher()
         self._lock = threading.RLock()
@@ -77,24 +81,28 @@ class MongoStore:
     def _unit(self, write):
         from pymongo.read_concern import ReadConcern
         from pymongo.write_concern import WriteConcern
-        from pymongo.errors import OperationFailure
+        from pymongo.errors import OperationFailure, PyMongoError
         from .service import Conflict
         with self._lock, self.client.start_session() as session:
             conn = None
             try:
                 with session.start_transaction(read_concern=ReadConcern("snapshot"), write_concern=WriteConcern("majority")):
-                    generation = self.db.control.find_one({"_id": "generation"}, session=session)["version"]
+                    control_doc = self.db.control.find_one({"_id": "generation"}, session=session)
+                    generation = control_doc["version"] if control_doc else 0
                     conn, before = self._load(session)
                     conn.execute("BEGIN IMMEDIATE")
                     yield conn
                     conn.execute("COMMIT")
                     if write:
-                        changed = self.db.control.update_one({"_id": "generation", "version": generation}, {"$inc": {"version": 1}}, session=session)
-                        if changed.modified_count != 1:
-                            raise Conflict("STALE_STORAGE", "Central records changed; reload and retry")
+                        if control_doc is None:
+                            self.db.control.update_one({"_id": "generation"}, {"$setOnInsert": {"version": 1}}, upsert=True, session=session)
+                        else:
+                            changed = self.db.control.update_one({"_id": "generation", "version": generation}, {"$inc": {"version": 1}}, session=session)
+                            if changed.modified_count != 1:
+                                raise Conflict("STALE_STORAGE", "Central records changed; reload and retry")
                         self._persist(conn, before, session)
-            except OperationFailure as exc:
-                if exc.has_error_label("TransientTransactionError"):
+            except (OperationFailure, PyMongoError) as exc:
+                if hasattr(exc, "has_error_label") and exc.has_error_label("TransientTransactionError"):
                     raise Conflict("STALE_STORAGE", "Central records changed; reload and retry") from None
                 raise
             finally:
@@ -108,7 +116,8 @@ class MongoStore:
         return self._unit(False)
 
     def reset(self):
-        raise RuntimeError("Demo reset is disabled for Atlas")
+        from .service import Conflict
+        raise Conflict("RESET_DISABLED", "Demo reset is disabled for Atlas")
 
     def close(self):
         self.client.close()

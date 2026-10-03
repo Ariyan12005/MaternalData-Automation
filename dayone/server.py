@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import hashlib
 import hmac
 import base64
 import json
@@ -27,6 +28,19 @@ MAX_BODY_BYTES = 12 * 1024 * 1024
 log = logging.getLogger("dayone")
 
 
+def _authorized(supplied: str, token: str) -> bool:
+    digest = lambda value: hmac.new(b"dayone-auth", value.encode("utf-8"), hashlib.sha256).digest()
+    if hmac.compare_digest(digest(supplied), digest("Bearer " + token)):
+        return True
+    if not supplied.startswith("Basic "):
+        return False
+    try:
+        credentials = base64.b64decode(supplied[6:], validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return hmac.compare_digest(digest(credentials), digest("dayone:" + token))
+
+
 def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8) -> DayOneService:
     mode = os.environ.get("DAYONE_STORAGE", "sqlite")
     if mode not in ("sqlite", "mongodb"):
@@ -37,7 +51,7 @@ def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8) -> D
         if not os.environ.get("DAYONE_API_TOKEN"):
             raise ValueError("Configure DAYONE_API_TOKEN before Atlas startup")
         from .mongo_store import MongoStore
-        store = MongoStore(os.environ.get("DAYONE_MONGODB_URI"), os.environ.get("DAYONE_MONGODB_DATABASE", "dayone"))
+        store = MongoStore(os.environ.get("DAYONE_MONGODB_URI"), os.environ.get("DAYONE_MONGODB_DATABASE") or "dayone")
     else:
         store = Store(db_path)
     media_store = None
@@ -57,11 +71,19 @@ class Api:
         self.service = service
         s = service
         self.routes = [
-            ("POST", r"/api/admin/senders", lambda m, q, b, r: s.enroll_sender(**b)),
-            ("POST", r"/api/whatsapp/uploads", lambda m, q, b, r: s.ingest_upload(**b)),
-            ("POST", r"/webhooks/whatsapp", lambda m, q, b, r: s.ingest_upload(**b)),
-            ("POST", r"/api/extraction/jobs/claim", lambda m, q, b, r: s.claim_job()),
-            ("POST", r"/api/extraction/jobs/(JOB-\d+)/result", lambda m, q, b, r: s.complete_job(m[1], **b)),
+            ("POST", r"/api/admin/senders", lambda m, q, b, r: s.enroll_sender(
+                facility_id=b.get("facility_id"), facility_name=b.get("facility_name"),
+                sender_id=b.get("sender_id"), label=b.get("label"))),
+            ("POST", r"/api/whatsapp/uploads", lambda m, q, b, r: s.ingest_upload(
+                sender_id=b.get("sender_id"), message_id=b.get("message_id"),
+                image_base64=b.get("image_base64"), suffix=b.get("suffix", ".jpg"), group_id=b.get("group_id"))),
+            ("POST", r"/webhooks/whatsapp", lambda m, q, b, r: s.ingest_upload(
+                sender_id=b.get("sender_id"), message_id=b.get("message_id"),
+                image_base64=b.get("image_base64"), suffix=b.get("suffix", ".jpg"), group_id=b.get("group_id"))),
+            ("POST", r"/api/extraction/jobs/claim", lambda m, q, b, r: s.claim_job(
+                b.get("document_id") if isinstance(b.get("document_id"), str) else None)),
+            ("POST", r"/api/extraction/jobs/(JOB-\d+)/result", lambda m, q, b, r: s.complete_job(
+                m[1], token=b.get("token"), draft=b.get("draft"), expected_revision=b.get("expected_revision"))),
             ("POST", r"/api/documents/(DOC-\d+)/close", lambda m, q, b, r: s.close_capture(m[1]) or {"ok": True}),
             ("GET", r"/api/system", lambda m, q, b, r: s.system_info()),
             ("POST", r"/api/system/ai", lambda m, q, b, r: s.set_ai_available(bool(b.get("available")))),
@@ -69,7 +91,8 @@ class Api:
             ("GET", r"/api/senders", lambda m, q, b, r: s.list_senders()),
             ("GET", r"/api/media", lambda m, q, b, r: s.list_media()),
             ("POST", r"/api/whatsapp/messages", lambda m, q, b, r: s.ingest_photo(
-                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"), group_id=b.get("group_id"))),
+                sender_id=b.get("sender_id"), message_id=b.get("message_id"),
+                media_ref=b.get("media_ref"), group_id=b.get("group_id"))),
             ("GET", r"/api/whatsapp/thread", lambda m, q, b, r: s.thread(_query(q, "sender_id"))),
             ("GET", r"/api/documents", lambda m, q, b, r: s.list_documents()),
             ("GET", r"/api/documents/(DOC-\d+)", lambda m, q, b, r: s.get_document(m[1])),
@@ -105,7 +128,9 @@ class Api:
                     if path.endswith("/move") and body.get("target_document_id") and type(body.get("target_expected_revision")) is not int:
                         raise Invalid("REVISION_REQUIRED", "Provide target_expected_revision for regrouping")
                     if path.endswith("/confirm"):
-                        decisions = body.get("existing_visit_decisions", {})
+                        decisions = body.get("existing_visit_decisions")
+                        if decisions is None:
+                            decisions = {}
                         if not isinstance(decisions, dict):
                             raise Invalid("INVALID_DECISIONS", "Visit decisions must be an object")
                         if any(value == "UPDATE" for value in decisions.values()):
@@ -140,18 +165,9 @@ def make_handler(api: Api):
         def _handle(self, method: str) -> None:
             url = urlparse(self.path)
             token = os.environ.get("DAYONE_API_TOKEN")
-            if token:
-                supplied = self.headers.get("Authorization", "")
-                authenticated = hmac.compare_digest(supplied, "Bearer " + token)
-                if supplied.startswith("Basic "):
-                    try:
-                        credentials = base64.b64decode(supplied[6:], validate=True).decode("utf-8")
-                        authenticated = hmac.compare_digest(credentials, "dayone:" + token)
-                    except (ValueError, UnicodeDecodeError):
-                        authenticated = False
-                if not authenticated:
-                    self._send_error(HTTPStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Provide backend bearer token")
-                    return
+            if token and not _authorized(self.headers.get("Authorization", ""), token):
+                self._send_error(HTTPStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Provide backend bearer token")
+                return
             if url.path.startswith(("/api/", "/webhooks/")):
                 body = {}
                 if method == "POST":
@@ -242,6 +258,8 @@ def _run_worker(service: DayOneService, stop: threading.Event, interval: float =
 
 
 def main(argv: list[str] | None = None) -> None:
+    from .config import load_config
+    load_config()
     parser = argparse.ArgumentParser(description="DayOne fixture-driven prototype")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)

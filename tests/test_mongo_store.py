@@ -1,4 +1,5 @@
 """Adapter tests use an explicit in-memory Mongo test double, not a live Atlas."""
+import base64
 import copy
 import json
 import os
@@ -134,21 +135,183 @@ class MongoAdapterTest(unittest.TestCase):
         self.assertEqual(media.get(ref), raw)
         self.assertNotIn(raw[:30], self.client.database["media_blobs"].items[ref]["payload"])
 
+    def test_demo_reset_is_conflict(self):
+        from dayone.server import Api
+        status, body = Api(self.service).dispatch("POST", "/api/demo/reset", {}, {}, "agent.test")
+        self.assertEqual(status, 409)
+        self.assertEqual(body["error"]["code"], "RESET_DISABLED")
+
+    def test_selected_field_update_and_stale_visit_on_mongo(self):
+        media = MongoMediaStore(self.store.db, self.store.cipher)
+        self.service.media_store = media
+        cover = (REPO_ROOT / COVER).read_bytes()
+        grid = (REPO_ROOT / T1_GRID).read_bytes()
+        first = self.service.ingest_upload(sender_id="private-sender", message_id="mongo-msg-1",
+                                           image_base64=base64.b64encode(cover).decode(), group_id="mongo-grp-1")
+        second = self.service.ingest_upload(sender_id="private-sender", message_id="mongo-msg-2",
+                                            image_base64=base64.b64encode(grid).decode(), group_id="mongo-grp-1")
+        self.assertEqual(first["document_id"], second["document_id"])
+        self.service.close_capture(first["document_id"])
+        job = self.service.claim_job(first["document_id"])
+        draft = _rewrite_pages(self.service.extractor.extract([COVER, T1_GRID]), job["page_refs"])
+        self.service.complete_job(job["job_id"], token=job["token"], expected_revision=job["expected_revision"], draft=draft)
+        self.service.select_patient(first["document_id"], reviewer="agent.test", choice="NEW")
+        saved = self.service.confirm(first["document_id"], reviewer="agent.test")
+        self.assertEqual(len(self.service.patient_timeline(saved["patient_id"])["visits"]), 3)
+
+        # Re-digitization with different weight
+        redo = self.service.ingest_upload(sender_id="private-sender", message_id="mongo-msg-3",
+                                          image_base64=base64.b64encode(cover).decode(), group_id="mongo-grp-2")
+        self.service.ingest_upload(sender_id="private-sender", message_id="mongo-msg-4",
+                                   image_base64=base64.b64encode(grid).decode(), group_id="mongo-grp-2")
+        self.service.close_capture(redo["document_id"])
+        job2 = self.service.claim_job(redo["document_id"])
+        draft2 = _rewrite_pages(self.service.extractor.extract([COVER, T1_GRID]), job2["page_refs"])
+        draft2["encounters"][0]["fields"]["weight_kg"]["value"] = 85
+        draft2["encounters"][0]["fields"]["weight_kg"]["field_status"] = "KNOWN"
+        draft2["encounters"][0]["fields"]["weight_kg"]["confidence"] = 0.95
+        self.service.complete_job(job2["job_id"], token=job2["token"], expected_revision=job2["expected_revision"], draft=draft2)
+
+        # Both keys match -> candidate is suggested
+        self.assertEqual(self.service.get_document(redo["document_id"])["review"]["suggested_patient_id"], saved["patient_id"])
+        self.service.select_patient(redo["document_id"], reviewer="agent.test", choice="EXISTING", patient_id=saved["patient_id"])
+
+        match = self.service.get_document(redo["document_id"])["review"]["encounter_matches"][0]
+        self.assertEqual(match["outcome"], "EXISTS_DIFFERENT")
+        self.assertEqual(len(match["diffs"]), 1)
+        self.assertEqual(match["diffs"][0]["field"], "weight_kg")
+
+        # Stale update is rejected
+        with self.assertRaises(Conflict) as caught:
+            self.service.confirm(redo["document_id"], reviewer="agent.test", existing_visit_decisions={
+                "0": {"action": "UPDATE", "fields": ["weight_kg"], "expected_version": "stale-version"}})
+        self.assertEqual(caught.exception.code, "STALE_VISIT")
+
+        # Correct update with versioned selected field
+        self.service.confirm(redo["document_id"], reviewer="agent.test", existing_visit_decisions={
+            "0": {"action": "UPDATE", "fields": ["weight_kg"], "expected_version": match["existing_version"]}})
+
+        visit = self.service.patient_timeline(saved["patient_id"])["visits"][0]
+        self.assertEqual(visit["fields"]["weight_kg"]["value"], 85)
+        self.assertEqual(visit["history"][-1]["selected_fields"], ["weight_kg"])
+
+    def test_offline_queue_flush_to_mongo_service(self):
+        import tempfile
+        from pathlib import Path
+        from dayone.offline import OfflineQueue
+        media = MongoMediaStore(self.store.db, self.store.cipher)
+        self.service.media_store = media
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            queue_db = Path(tmp_dir) / "edge_outbox.sqlite3"
+            queue = OfflineQueue(queue_db, self.store.cipher)
+            try:
+                cover = (REPO_ROOT / COVER).read_bytes()
+                grid = (REPO_ROOT / T1_GRID).read_bytes()
+                queue.capture("private-sender", "edge-msg-1", cover, group_id="edge-grp")
+                queue.capture("private-sender", "edge-msg-2", grid, group_id="edge-grp")
+                delivered = queue.flush(lambda body: self.service.ingest_upload(**body), self.service.close_capture)
+                self.assertEqual(delivered, 2)
+            finally:
+                queue.close()
+
+            docs = self.service.list_documents()
+            self.assertEqual(len(docs), 1)
+            self.assertEqual(docs[0]["status"], "PENDING_AI")
+            self.assertEqual(docs[0]["page_count"], 2)
+
+
+def _rewrite_pages(draft, page_refs):
+    draft = copy.deepcopy(draft)
+    mapping = {old["page_ref"]: new for old, new in zip(draft["pages"], page_refs)}
+    for page in draft["pages"]:
+        page["page_ref"] = mapping[page["page_ref"]]
+    for item in draft.get("pii_detected", []):
+        if item.get("page_ref") in mapping:
+            item["page_ref"] = mapping[item["page_ref"]]
+    for field in draft["document_fields"].values():
+        ref = (field.get("source") or {}).get("page_ref")
+        if ref in mapping:
+            field["source"]["page_ref"] = mapping[ref]
+    for encounter in draft["encounters"]:
+        for field in encounter["fields"].values():
+            ref = (field.get("source") or {}).get("page_ref")
+            if ref in mapping:
+                field["source"]["page_ref"] = mapping[ref]
+    return draft
+
+
 @unittest.skipUnless(os.environ.get("DAYONE_TEST_MONGODB_URI"), "No dedicated Atlas test URI configured")
 class LiveAtlasTest(unittest.TestCase):
-    def test_snapshot_transaction_roundtrip(self):
+    def test_encrypted_pipeline_on_dedicated_database(self):
         import uuid
         from pymongo import MongoClient
-        uri = os.environ["DAYONE_TEST_MONGODB_URI"]
+        uri = os.environ["DAYONE_TEST_MONGODB_URI"].strip()
         database = "dayone_test_" + uuid.uuid4().hex
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-        store = None
+        client = MongoClient(uri, serverSelectionTimeoutMS=8000, tls=True)
+        cipher = Cipher(Fernet.generate_key())
         try:
-            store = MongoStore(uri, database, cipher=Cipher(Fernet.generate_key()), client=client)
-            with store.tx() as db:
-                db.execute("INSERT INTO facilities VALUES ('TEST','synthetic')")
-            with store.read() as db:
-                self.assertEqual(db.execute("SELECT name FROM facilities").fetchone()[0], "synthetic")
+            store = MongoStore(uri, database, cipher=cipher, client=client)
+            media = MongoMediaStore(store.db, cipher)
+            service = DayOneService(store, FixtureExtractor(REPO_ROOT / "fixtures"), REPO_ROOT, media_store=media)
+            service.enroll_sender(facility_id="FAC-TEST", facility_name="Test facility",
+                                  sender_id="whatsapp:+212600000009", label="test-sender")
+            cover = (REPO_ROOT / COVER).read_bytes()
+            grid = (REPO_ROOT / T1_GRID).read_bytes()
+            first = service.ingest_upload(sender_id="whatsapp:+212600000009", message_id="wamid.live-1",
+                                          image_base64=base64.b64encode(cover).decode(), group_id="live-group")
+            second = service.ingest_upload(sender_id="whatsapp:+212600000009", message_id="wamid.live-2",
+                                           image_base64=base64.b64encode(grid).decode(), group_id="live-group")
+            self.assertEqual(first["document_id"], second["document_id"])
+            self.assertTrue(service.ingest_upload(sender_id="whatsapp:+212600000009", message_id="wamid.live-2",
+                                                  image_base64=base64.b64encode(grid).decode(),
+                                                  group_id="live-group")["duplicate"])
+            service.close_capture(first["document_id"])
+            job = service.claim_job(first["document_id"])
+            draft = _rewrite_pages(service.extractor.extract([COVER, T1_GRID]), job["page_refs"])
+            service.complete_job(job["job_id"], token=job["token"], expected_revision=job["expected_revision"], draft=draft)
+            self.assertIsNone(service.get_document(first["document_id"])["review"]["suggested_patient_id"])
+            service.select_patient(first["document_id"], reviewer="agent.test", choice="NEW")
+            saved = service.confirm(first["document_id"], reviewer="agent.test")
+            self.assertTrue(service.confirm(first["document_id"], reviewer="agent.test")["replayed"])
+            self.assertEqual(len(service.patient_timeline(saved["patient_id"])["visits"]), 3)
+            raw_ref = service.get_document(first["document_id"])["pages"][0]["media_ref"]
+            self.assertEqual(media.get(raw_ref), cover)
+            blob = store.db["media_blobs"].find_one({"_id": raw_ref})
+            self.assertNotIn(cover[:24], bytes(blob["payload"]))
+            patient = cipher.open(bytes(next(store.db["patients"].find())["payload"]))
+            self.assertEqual(patient["registry_file_number"], "164125")
+            document = cipher.open(bytes(next(store.db["documents"].find({"_id": first["document_id"]}))["payload"]))
+            self.assertEqual(document["sender_id"], "whatsapp:+212600000009")
+            visit = cipher.open(bytes(next(store.db["visits"].find())["payload"]))
+            self.assertEqual(visit["patient_id"], saved["patient_id"])
+            self.assertTrue(any(cipher.open(bytes(item["payload"]))["type"] == "REGISTERED"
+                                for item in store.db["events"].find()))
+            for table, needle in (("patients", b"164125"), ("documents", b"whatsapp:+212600000009"),
+                                  ("visits", saved["patient_id"].encode())):
+                payload = bytes(next(store.db[table].find())["payload"])
+                self.assertNotIn(needle, payload)
+            redo = service.ingest_upload(sender_id="whatsapp:+212600000009", message_id="wamid.live-3",
+                                         image_base64=base64.b64encode(cover).decode(), group_id="live-group-2")
+            service.ingest_upload(sender_id="whatsapp:+212600000009", message_id="wamid.live-4",
+                                  image_base64=base64.b64encode(grid).decode(), group_id="live-group-2")
+            service.close_capture(redo["document_id"])
+            job = service.claim_job(redo["document_id"])
+            draft = _rewrite_pages(service.extractor.extract([COVER, T1_GRID]), job["page_refs"])
+            draft["encounters"][0]["fields"]["weight_kg"]["value"] = 88
+            service.complete_job(job["job_id"], token=job["token"], expected_revision=job["expected_revision"], draft=draft)
+            self.assertEqual(service.get_document(redo["document_id"])["review"]["suggested_patient_id"], saved["patient_id"])
+            service.select_patient(redo["document_id"], reviewer="agent.test", choice="EXISTING",
+                                   patient_id=saved["patient_id"])
+            match = service.get_document(redo["document_id"])["review"]["encounter_matches"][0]
+            with self.assertRaises(Conflict) as caught:
+                service.confirm(redo["document_id"], reviewer="agent.test", existing_visit_decisions={
+                    "0": {"action": "UPDATE", "fields": ["weight_kg"], "expected_version": "stale-version"}})
+            self.assertEqual(caught.exception.code, "STALE_VISIT")
+            service.confirm(redo["document_id"], reviewer="agent.test", existing_visit_decisions={
+                "0": {"action": "UPDATE", "fields": ["weight_kg"], "expected_version": match["existing_version"]}})
+            visit = service.patient_timeline(saved["patient_id"])["visits"][0]
+            self.assertEqual(visit["fields"]["weight_kg"]["value"], 88)
+            self.assertEqual(visit["history"][-1]["selected_fields"], ["weight_kg"])
         finally:
             client.drop_database(database)
             client.close()

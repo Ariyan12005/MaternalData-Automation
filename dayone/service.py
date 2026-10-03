@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -65,6 +66,11 @@ def _dumps(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _secret_equal(left: str, right: str) -> bool:
+    digest = lambda value: hmac.new(b"dayone-secret", value.encode("utf-8"), hashlib.sha256).digest()
+    return hmac.compare_digest(digest(left), digest(right))
+
+
 class DayOneService:
     def __init__(self, store: Store, extractor, repo_root: Path, *, grouping_window_seconds: int = 8, clock=utcnow, media_store=None):
         self.store = store
@@ -113,7 +119,7 @@ class DayOneService:
         return {
             "ai_available": ai_available,
             "grouping_window_seconds": int(self.window.total_seconds()),
-            "extractor": getattr(self.extractor, "name", type(self.extractor).__name__),
+            "extractor": "external" if self.extractor is None else getattr(self.extractor, "name", type(self.extractor).__name__),
             "catalog": schema.catalog(),
         }
 
@@ -177,8 +183,8 @@ class DayOneService:
         try:
             if not isinstance(image_base64, str):
                 raise ValueError()
-            data = base64.b64decode(image_base64, validate=True)
-            ref = self.media_store.put(data, suffix)
+            data = base64.b64decode("".join(image_base64.split()), validate=True)
+            ref = self.media_store.put(data, (suffix or ".jpg").lower())
         except (ValueError, binascii.Error):
             raise Invalid("INVALID_IMAGE", "Upload must be a JPEG or PNG of at most 8 MiB") from None
         return self.ingest_photo(sender_id=sender_id, message_id=message_id, media_ref=ref, group_id=group_id)
@@ -236,7 +242,7 @@ class DayOneService:
         now = self.clock()
         with self.store.tx() as db:
             job = db.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
-            if job is None or not isinstance(token, str) or job["token"] != token:
+            if job is None or not isinstance(token, str) or not _secret_equal(job["token"], token):
                 raise Forbidden("INVALID_JOB", "Invalid extraction lease")
             if job["state"] == "DONE":
                 return {"ok": True, "replayed": True}
@@ -332,11 +338,12 @@ class DayOneService:
 
     # ------------------------------------------------------------------ queue
 
-    def close_capture(self, document_id: str) -> None:
+    def close_capture(self, document_id: str) -> dict:
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
             if document["status"] == "CAPTURED":
                 self._set_status(db, document_id, "PENDING_AI", self.clock())
+        return {"ok": True}
 
     def tick(self) -> list[str]:
         """Close expired grouping windows, then extract queued documents if AI is available."""

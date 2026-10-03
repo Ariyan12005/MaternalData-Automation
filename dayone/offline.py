@@ -52,6 +52,8 @@ class OfflineQueue:
         self.db.close()
 
 def main():
+    from .config import load_config
+    load_config()
     import os
     parser = argparse.ArgumentParser(description="Encrypted bridge capture and reconnect retry")
     parser.add_argument("--queue", default="var/offline.sqlite3")

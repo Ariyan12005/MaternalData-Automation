@@ -154,6 +154,10 @@ class BackendFlowTest(FlowTestCase):
                         urlopen(url + path)
                     self.assertEqual(caught.exception.code, 401)
                     caught.exception.close()
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(Request(url + "/api/system", headers={"Authorization": "Bearer x"}))
+                self.assertEqual(caught.exception.code, 401)
+                caught.exception.close()
                 for authorization in ("Bearer test-token", "Basic " + base64.b64encode(b"dayone:test-token").decode()):
                     with urlopen(Request(url + "/api/system", headers={"Authorization": authorization})) as response:
                         self.assertEqual(response.status, 200)
@@ -161,6 +165,50 @@ class BackendFlowTest(FlowTestCase):
                 server.shutdown()
                 worker.join()
                 server.server_close()
+
+    def test_http_bridge_ignores_unknown_fields(self):
+        self.service.media_store = MediaStore(Path(self.tmp.name) / "images", Cipher(Fernet.generate_key()))
+        raw = (self.service.repo_root / COVER).read_bytes()
+        status, body = Api(self.service).dispatch("POST", "/api/whatsapp/uploads", {}, {
+            "sender_id": SENDER, "message_id": "bridge-extra", "image_base64": base64.b64encode(raw).decode(),
+            "suffix": ".jpg", "group_id": "scan-extra", "timestamp": 1, "from": "meta-extra",
+        }, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["position"], 1)
+        status, claimed = Api(self.service).dispatch("POST", "/api/extraction/jobs/claim", {}, {
+            "noise": True, "document_id": body["document_id"],
+        }, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertIsNone(claimed)
+
+    def test_http_bridge_handles_whitespace_and_uppercase_suffix(self):
+        self.service.media_store = MediaStore(Path(self.tmp.name) / "images", Cipher(Fernet.generate_key()))
+        raw = (self.service.repo_root / COVER).read_bytes()
+        wrapped_b64 = "  " + base64.b64encode(raw).decode()[:50] + "\r\n  " + base64.b64encode(raw).decode()[50:] + "\n"
+        status, body = Api(self.service).dispatch("POST", "/api/whatsapp/uploads", {}, {
+            "sender_id": SENDER, "message_id": "bridge-wrapped", "image_base64": wrapped_b64,
+            "suffix": ".JPG", "group_id": "scan-wrapped",
+        }, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["position"], 1)
+
+    def test_confirm_handles_null_decisions(self):
+        doc = self.pending()
+        self.service.process_document(doc)
+        self.service.select_patient(doc, reviewer=REVIEWER, choice="EXISTING", patient_id="PAT-000001")
+        status, body = Api(self.service).dispatch("POST", f"/api/documents/{doc}/confirm", {}, {
+            "expected_revision": 2, "existing_visit_decisions": None,
+        }, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["patient_id"], "PAT-000001")
+
+    def test_system_info_reports_external_extractor(self):
+        saved = self.service.extractor
+        try:
+            self.service.extractor = None
+            self.assertEqual(self.service.system_info()["extractor"], "external")
+        finally:
+            self.service.extractor = saved
 
 class EncryptionTest(unittest.TestCase):
     def test_offline_restart_response_loss_and_retry(self):
@@ -204,6 +252,8 @@ class EncryptionTest(unittest.TestCase):
             Cipher(Fernet.generate_key()).open(sealed)
         with self.assertRaises(InvalidToken):
             cipher.open(sealed[:-5] + b"xxxxx")
+        key = Fernet.generate_key().decode()
+        self.assertEqual(Cipher(key + "\r\n").index("sender"), Cipher(key).index("sender"))
 
     def test_media_rejects_path_escape_and_fake_image(self):
         with tempfile.TemporaryDirectory() as directory:

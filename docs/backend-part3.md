@@ -7,7 +7,7 @@ The current team repository remains Python's standard-library HTTP server with
 UI. No FastAPI prototype was copied. `DAYONE_STORAGE=mongodb` selects Atlas;
 `sqlite` remains the unencrypted local fixture demo. A storage typo fails startup.
 Configuration comes from environment variables; `.env.example` is a template,
-not an automatically loaded file. No private `.env` or Atlas URI was available.
+and the CLI now loads private .env at startup, without overriding environment settings. No private `.env` or Atlas URI was available.
 Set `DAYONE_MONGODB_URI` to your Atlas SRV connection string. Install dependencies
 and permit your workstation's IP in Atlas network access; use a database user
 limited to the DayOne database. See [PyMongo transaction documentation](https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/transactions/).
@@ -139,12 +139,26 @@ still outside our control and its device-side encryption is not demonstrated.
 
 ## Verification
 
-The existing flow and new encryption, recovery, leases, auth, selected updates and
-Atlas serialization tests run via `python -m unittest discover -s tests -v`.
-Atlas unit tests use a clearly labeled in-memory Mongo test double. For a real
-transaction smoke test, set `DAYONE_TEST_MONGODB_URI` to a dedicated Atlas test
-credential and run `python -m unittest tests.test_mongo_store.LiveAtlasTest -v`.
-It creates and drops only a random `dayone_test_<uuid>` database, never the normal
-DayOne database. Live Atlas verification is skipped without that URI. Real OCR,
-Meta transport, per-facility authorization, automated retention and downstream
-SYNCED export remain outside this implementation.
+On Windows PowerShell (venv activated):
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Atlas adapter tests in `tests/test_mongo_store.py` use an in-memory Mongo test double
+unless `DAYONE_TEST_MONGODB_URI` is set. That URI must point at a dedicated test
+credential/cluster. `LiveAtlasTest` creates only `dayone_test_<uuid>`, writes grouped
+uploads, encrypted originals, extraction results, patients, visits, corrections and
+history, then drops that database. It never targets `DAYONE_MONGODB_DATABASE`. Skip
+is expected when the URI is unset; that skip is not live Atlas proof.
+
+```powershell
+$env:DAYONE_TEST_MONGODB_URI = "mongodb+srv://USER:PASSWORD@CLUSTER/?retryWrites=true&w=majority"
+python -m unittest tests.test_mongo_store.LiveAtlasTest -v
+```
+
+Real OCR, Meta transport, per-facility authorization, automated retention and
+downstream SYNCED export remain outside this implementation. The HTTP simulator and
+`FixtureExtractor` are mocks. Fatma's worker is real when `DAYONE_EXTRACTOR=external`
+and it calls claim/media/result. Aymane's Meta Cloud API remains a separate transport
+in front of `POST /api/whatsapp/uploads`.

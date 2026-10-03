@@ -9,10 +9,13 @@ from cryptography.fernet import Fernet
 class Cipher:
     def __init__(self, key=None):
         key = key or os.environ.get("DAYONE_ENCRYPTION_KEY")
+        if isinstance(key, (str, bytes)):
+            key = key.strip()
         if not key:
             raise ValueError("Configure DAYONE_ENCRYPTION_KEY with a Fernet key")
-        self.fernet = Fernet(key.encode() if isinstance(key, str) else key)
-        self.index_key = base64.urlsafe_b64decode(key)
+        material = key.encode() if isinstance(key, str) else key
+        self.fernet = Fernet(material)
+        self.index_key = base64.urlsafe_b64decode(material)
 
     def encrypt(self, data):
         return self.fernet.encrypt(data)
