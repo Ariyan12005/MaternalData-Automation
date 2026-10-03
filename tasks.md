@@ -2,7 +2,7 @@
 
 **Team:** Fatma · Aymane · Ariyan  
 **Challenge:** Turn paper maternal registry photos into structured, verified, visit-linked digital records via a WhatsApp-style agent.  
-**References:** `consignes-fr-en.pdf`, `manifest.json`, `data/Paper Registry/`, `data/maternal_registry_synthetic.csv`, recommended plan: `DayOne_Three_Person_Task_Plan.pdf`
+**References:** `consignes-fr-en.pdf` (authoritative rules), `Extra Info CodeML Hackathon.docx` (architecture & V1 scope), `manifest.json`, `data/Paper Registry/`, `data/maternal_registry_synthetic.csv` / `.xlsx`, recommended plan: `DayOne_Three_Person_Task_Plan.pdf`
 
 **Out of scope:** Clinical prediction, triage, diagnosis, treatment recommendations.
 
@@ -40,6 +40,17 @@
 5. Backend saves **validated** visit after explicit confirmation.
 6. Next visit: link via **midwife-assigned code on the registry**; midwife chooses among suggested matches.
 
+### Two-layer architecture (from Extra Info + consignes)
+
+| Layer | Requires internet | Responsibilities |
+|-------|-------------------|------------------|
+| **Layer 1 — Offline client** | No | Login/session, camera, image QA, encrypted local store, manual entry/edit, local patient cache, **queue** (`PENDING_AI`), continue working offline |
+| **Layer 2 — Online services** | Yes | Upload queue, **Fatma** extraction/OCR, **Ariyan** DB sync & central duplicate search, backup, admin |
+
+Offline capture must **never** be lost when connectivity drops. AI and cloud sync run when the network returns; review can happen on-device or via WhatsApp depending on your prototype shape.
+
+> **Privacy:** `Extra Info CodeML Hackathon.docx` uses example fields like name/CIN/phone for illustration. **`consignes-fr-en.pdf` overrides:** do not collect or store direct identifiers from paper; use internal IDs + **midwife-written patient code** on the registry for linking.
+
 ```mermaid
 sequenceDiagram
   participant M as Midwife (WhatsApp)
@@ -76,6 +87,34 @@ sequenceDiagram
 Administrative (non-PII): `registry_file_number`, `region`, `province`, `facility_name`, `facility_type`, `coverage_mode`, `midwife_patient_code`  
 Clinical (examples): `age_years`, `gravidity`, `parity`, `gestational_age_weeks`, `systolic_bp_mmhg`, `diastolic_bp_mmhg`, `hiv_test`, `syphilis_test`, `hepatitis_c_test`, `delivery_mode`, `newborn_sex`, `birth_weight_g`, `visit_date`  
 *Do not extract or store patient name fields (often masked on specimens).*
+
+### Registry sections to map (Cuadernito / fiche — extend after MVP)
+
+Use `data/Paper Registry/dossiers_specimen_10_patientes.pdf` and specimen PNGs for full booklet layout. **Fatma** owns the field map in `docs/field-mapping.md`:
+
+1. Patient / administrative (non-PII only per consignes)  
+2. Medical & family history  
+3. Obstetric history  
+4. Current pregnancy (longitudinal antenatal rows)  
+5. Delivery  
+6. Postpartum & newborn  
+
+Multipage rule (Extra Info §D): one digitization session → many pages → **one document** → process as a whole. Re-photo of same booklet → show existing record; midwife chooses what to update (consignes §7).
+
+### Open questions — resolve in Day 0 standup
+
+| # | Question | Default for hackathon build |
+|---|----------|-----------------------------|
+| A | Primary match key on paper? | **`midwife_patient_code`** + registry file number; **not** CIN/name (consignes) |
+| B | No code on page? | Create provisional internal patient; midwife confirms at match step |
+| C | Midwife visibility scope? | At least “own captures”; document if facility-wide |
+| D | Multipage in one session? | **Yes** — Aymane state `capturing_pages` until “terminé” |
+| E | Re-digitize same booklet? | **Show existing + selective update** (Ariyan) |
+| F | UI language? | French bot messages minimum; preserve `raw_text` from form |
+| G | AI unavailable? | Manual entry path in chatbot (Aymane + Ariyan) |
+| H | Follow-up questions? | **Yes** — required for `NEEDS_REVIEW` / `ILLEGIBLE` fields |
+
+Internal display IDs (e.g. `PAT-000001`) are fine if **auto-generated**, never derived from name (Extra Info §8).
 
 ### Minimum shared record contract (illustrative)
 
@@ -257,10 +296,13 @@ Clinical (examples): `age_years`, `gravidity`, `parity`, `gestational_age_weeks`
 
 | Asset | Use |
 |-------|-----|
-| `consignes-fr-en.pdf` | Full rules, statuses, lifecycle, grading |
-| `data/Paper Registry/*` | Training/eval images (129+ in manifest) |
-| `data/maternal_registry_synthetic.csv` | Reference values for synthetic patients |
-| `manifest.json` | File inventory + checksums |
+| `consignes-fr-en.pdf` | Full rules, statuses, lifecycle, grading (**source of truth**) |
+| `Extra Info CodeML Hackathon.docx` | Two-layer offline/online design, V1 scope, workflow Q&A |
+| `data/Paper Registry/*` | Specimen images + `dossiers_specimen_10_patientes.pdf` (10 patients); `1-1.jpg`…`1-5.jpg` sample fiche |
+| `data/maternal_registry_synthetic.csv` | Ground-truth-style table, **200 rows** (+ header) |
+| `data/maternal_registry_synthetic.xlsx` | Same dataset as CSV (prefer one in scripts; keep both read-only) |
+| `manifest.json` | **132** listed files with SHA-256 — do not modify listed assets |
+| `tasks.md` | Team backlog (Fatma / Aymane / Ariyan) |
 
 ---
 
@@ -272,4 +314,4 @@ Clinical (examples): `age_years`, `gravidity`, `parity`, `gestational_age_weeks`
 
 ---
 
-*Last updated: team working draft aligned with `consignes-fr-en.pdf` and `DayOne_Three_Person_Task_Plan.pdf`.*
+*Last updated: includes repo dataset + `Extra Info CodeML Hackathon.docx`; privacy rules from `consignes-fr-en.pdf`.*
