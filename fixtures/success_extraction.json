@@ -1,0 +1,235 @@
+{
+  "schema_version": "1.0",
+  "layout_id": "ma-fiche-surveillance-grossesse-v1",
+  "notes": "Illustrative transcription of the cover and the first-trimester visit grid. Values must be replaced by verified ground truth before computing accuracy.",
+  "extraction": {
+    "extractor": "fixture",
+    "extractor_version": "fixture-0.1",
+    "processed_at": null
+  },
+  "pages": [
+    {"page_ref": "data/Paper Registry/1-1.jpg", "section": "identification"},
+    {"page_ref": "data/Paper Registry/1-4.jpg", "section": "current_pregnancy_t1"}
+  ],
+  "pii_detected": [
+    {"page_ref": "data/Paper Registry/1-1.jpg", "category": "PATIENT_NAME", "action": "NOT_EXTRACTED"}
+  ],
+  "document_fields": {
+    "registry_file_number": {
+      "raw_text": "164125", "value": "164125", "unit": null,
+      "confidence": 0.96, "field_status": "KNOWN", "validation_flags": [],
+      "source": {"page_ref": "data/Paper Registry/1-1.jpg", "row": "N° de la fiche", "column": null},
+      "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+      "corrections": []
+    },
+    "midwife_patient_code": {
+      "raw_text": "CM: 164125", "value": "164125", "unit": null,
+      "confidence": 0.88, "field_status": "KNOWN", "validation_flags": [],
+      "source": {"page_ref": "data/Paper Registry/1-1.jpg", "row": "Code sage-femme (haut droite)", "column": null},
+      "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+      "corrections": []
+    },
+    "facility_name": {
+      "raw_text": "C/S Sidi Smail", "value": "C/S Sidi Smail", "unit": null,
+      "confidence": 0.86, "field_status": "KNOWN", "validation_flags": [],
+      "source": {"page_ref": "data/Paper Registry/1-1.jpg", "row": "Nom de l'établissement sanitaire", "column": null},
+      "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+      "corrections": []
+    },
+    "last_menstrual_period": {
+      "raw_text": "13/03/2025", "value": "2025-03-13", "unit": null,
+      "confidence": 0.81, "field_status": "KNOWN", "validation_flags": [],
+      "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "DDR", "column": null},
+      "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+      "corrections": []
+    }
+  },
+  "encounters": [
+    {
+      "encounter_type": "ANTENATAL",
+      "slot": "T1_V1",
+      "fields": {
+        "visit_date": {
+          "raw_text": "04/07/25", "value": "2025-07-04", "unit": null,
+          "confidence": 0.9, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Venue le", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "gestational_age_days": {
+          "raw_text": "16SA+1j", "value": 113, "unit": "days",
+          "confidence": 0.84, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Âge probable de la grossesse", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "weight_kg": {
+          "raw_text": "NF", "value": null, "unit": "kg",
+          "confidence": 0.8, "field_status": "NOT_PROVIDED", "validation_flags": ["MARKED_NOT_DONE"],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Poids", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "systolic_bp_mmhg": {
+          "raw_text": "11/7", "value": 110, "unit": "mmHg",
+          "confidence": 0.86, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "TA", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "diastolic_bp_mmhg": {
+          "raw_text": "11/7", "value": 70, "unit": "mmHg",
+          "confidence": 0.86, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "TA", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "fundal_height_cm": {
+          "raw_text": null, "value": null, "unit": "cm",
+          "confidence": 0.9, "field_status": "NOT_PROVIDED", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "HU", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "syphilis_test": {
+          "raw_text": "nég", "value": "NEGATIVE", "unit": null,
+          "confidence": 0.88, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Syphilis (TPHA/VDRL)", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "hiv_test": {
+          "raw_text": "nég", "value": "NEGATIVE", "unit": null,
+          "confidence": 0.85, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Sérologie VIH", "column": "Visite 1"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        }
+      }
+    },
+    {
+      "encounter_type": "ANTENATAL",
+      "slot": "T1_V2",
+      "fields": {
+        "visit_date": {
+          "raw_text": "01/08/25", "value": "2025-08-01", "unit": null,
+          "confidence": 0.88, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Venue le", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "gestational_age_days": {
+          "raw_text": "20SA+1j", "value": 141, "unit": "days",
+          "confidence": 0.83, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Âge probable de la grossesse", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "weight_kg": {
+          "raw_text": "58kg", "value": 58, "unit": "kg",
+          "confidence": 0.8, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Poids", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "systolic_bp_mmhg": {
+          "raw_text": "11/7", "value": 110, "unit": "mmHg",
+          "confidence": 0.84, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "TA", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "diastolic_bp_mmhg": {
+          "raw_text": "11/7", "value": 70, "unit": "mmHg",
+          "confidence": 0.84, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "TA", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "fundal_height_cm": {
+          "raw_text": "19cm", "value": 19, "unit": "cm",
+          "confidence": 0.82, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "HU", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "syphilis_test": {
+          "raw_text": null, "value": null, "unit": null,
+          "confidence": 0.8, "field_status": "NOT_PROVIDED", "validation_flags": ["CROSSED_OUT"],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Syphilis (TPHA/VDRL)", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "hiv_test": {
+          "raw_text": null, "value": null, "unit": null,
+          "confidence": 0.8, "field_status": "NOT_PROVIDED", "validation_flags": ["CROSSED_OUT"],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Sérologie VIH", "column": "Visite 2"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        }
+      }
+    },
+    {
+      "encounter_type": "ANTENATAL",
+      "slot": "T1_V3",
+      "fields": {
+        "visit_date": {
+          "raw_text": "12/09/25", "value": "2025-09-12", "unit": null,
+          "confidence": 0.87, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Venue le", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "gestational_age_days": {
+          "raw_text": "26SA+1j", "value": 183, "unit": "days",
+          "confidence": 0.8, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Âge probable de la grossesse", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "weight_kg": {
+          "raw_text": "61kg", "value": 61, "unit": "kg",
+          "confidence": 0.83, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Poids", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "systolic_bp_mmhg": {
+          "raw_text": "12/7", "value": 120, "unit": "mmHg",
+          "confidence": 0.85, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "TA", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "diastolic_bp_mmhg": {
+          "raw_text": "12/7", "value": 70, "unit": "mmHg",
+          "confidence": 0.85, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "TA", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "fundal_height_cm": {
+          "raw_text": "24cm", "value": 24, "unit": "cm",
+          "confidence": 0.8, "field_status": "KNOWN", "validation_flags": [],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "HU", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "syphilis_test": {
+          "raw_text": null, "value": null, "unit": null,
+          "confidence": 0.8, "field_status": "NOT_PROVIDED", "validation_flags": ["CROSSED_OUT"],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Syphilis (TPHA/VDRL)", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        },
+        "hiv_test": {
+          "raw_text": null, "value": null, "unit": null,
+          "confidence": 0.8, "field_status": "NOT_PROVIDED", "validation_flags": ["CROSSED_OUT"],
+          "source": {"page_ref": "data/Paper Registry/1-4.jpg", "row": "Sérologie VIH", "column": "Visite 3"},
+          "verification": {"state": "UNVERIFIED", "by": null, "at": null},
+          "corrections": []
+        }
+      }
+    }
+  ]
+}

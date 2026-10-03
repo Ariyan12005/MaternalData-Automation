@@ -4,35 +4,78 @@
 
 | Actor | Responsibility | Does **not** do |
 |-------|----------------|-----------------|
-| **Midwife** | Photograph **fiche / registry pages** and send via WhatsApp (one or many pages per woman). | Patient tracking, field correction, match decisions, ID cards, extra steps beyond photos. |
-| **Platform (Fatma + Ariyan)** | Extract structured data from the **fiche**, link visits, maintain longitudinal patient profiles, queue uncertain cases. | Change midwife paper workflow. |
-| **Back-office reviewer** | Resolve `NEEDS_REVIEW` fields, confirm or correct values, choose patient match when ambiguous (`[Patiente 1] [Patiente 2] [Nouvelle] [Je ne sais pas]`). | — |
+| **Midwife** | Photograph **fiche pages** and send them on WhatsApp (one or many pages per woman). Receives a short acknowledgment per page. | Patient tracking, field correction, match decisions, ID cards, typing in chat. |
+| **Platform (Fatma + Ariyan)** | Group pages into documents, extract a draft, **suggest** a patient, keep longitudinal patient timelines. | Register anything without a reviewer. |
+| **Back-office reviewer (Aymane's screen)** | Answer the uncertain-field questions, correct values, **select** the patient (`[Patiente N] [Nouvelle] [Je ne sais pas]`), split/regroup pages, press **CONFIRMER**. | — |
 
-Human verification required by **consignes** is performed by the **back-office reviewer** (web UI, admin chat, or internal tool)—not by the midwife in WhatsApp.
+Registration always requires an explicit reviewer: auto-linking only suggests a candidate (see `identity-strategy.md`).
 
-## Input = fiche only (keep it simple)
+## Input = fiche only
 
-Midwives send **photos of the paper maternal registry**—nothing else. No separate ID documents, no extra apps, no typing in chat.
+Midwives send **photos of the paper fiche**—nothing else. No ID documents, no extra app, no typing.
 
 ## Patient tracking (from the fiche)
 
 | Key | Source |
 |-----|--------|
-| `registry_file_number` | N° on the fiche header (e.g. `1-1.jpg`) |
-| `midwife_patient_code` | Code written on the booklet—**extracted from the image** |
-| `internal_patient_id` | System-generated (`PAT-000001` / UUID), never from name |
-| Multipage | Group WhatsApp photos into one `Document` per woman/session |
+| `registry_file_number` | *N° de la fiche* on the cover (`1-1.jpg`) |
+| `midwife_patient_code` | Code written on the booklet (e.g. `CM: 164125`) |
+| `patient_id` | Generated (`PAT-000001`), never derived from name or keys |
 
-**Never store** names, phone, or address from the form (consignes). If such text appears on paper, redact or drop in extraction.
+Keys are unique **per facility**. A visit is identified by (`patient_id`, `encounter_type`, `visit_date`), so re-photographing a booklet does not create new visits. Details: `identity-strategy.md`.
 
-**Never auto-create** a new patient when a plausible match exists—back-office decides (consignes).
+**Never store** names, phone or address from the form. **Never auto-create** a patient.
 
 ## Midwife WhatsApp (minimal)
 
-1. Send photo(s) of the fiche.  
-2. Optional: multipage in one session (grouped by backend).  
-3. Auto-reply: *« Reçu. Traitement en cours. »* — no clinical Q&A.
+1. Send photo(s) of the fiche. Pages sent close together are grouped provisionally into one document.
+2. Auto-reply per page: *« Reçu : page N. Merci, le traitement est en cours. »*
+3. No clinical Q&A in the midwife thread.
+
+## Offline: where the durable queue lives
+
+Decision: **no companion app**. The midwife's phone runs WhatsApp only.
+
+| Segment | Who holds the data while something is down | Durable? | Ours? |
+|---------|--------------------------------------------|----------|-------|
+| Phone has no network | WhatsApp's own outbox on the phone; delivered when the network returns | Yes (WhatsApp behaviour) | **No**—we do not control its storage or encryption |
+| Platform receives a photo | `pages` + `documents` rows in the platform SQLite file (`var/dayone.sqlite3`), committed **before** the acknowledgment is sent | Yes | Yes |
+| AI / extraction unavailable | Document stays `CAPTURED` → `PENDING_AI` in the same database; the worker retries every second | Yes, survives restarts | Yes |
+| Webhook delivered twice | `source_message_id` unique → same page returned, no second acknowledgment | — | Yes |
+| Confirm retried | Already `REGISTERED` → stored result returned, no new visit | — | Yes |
+
+**What the demo proves:** acknowledgment only after persistence; AI outage ("IA disponible" toggle) leaves documents queued and nothing is lost; queue and drafts survive a server restart (`tests/test_flow.py`); webhook replay and confirm retry never duplicate pages or visits.
+
+**What it does not prove (gaps against `consignes-fr-en.pdf`):**
+
+- *Offline capture on the device with encrypted local storage* (§4, task 4). We rely on WhatsApp's outbox, which we neither build nor demonstrate. The official demo asks for "an offline capture, the return of connectivity"; ours shows the platform-side equivalent (AI outage → recovery).
+- Encryption at rest of the platform database and images: not implemented yet.
+- `SYNCED` (upload to a central registry): not implemented.
+
+Ask the organizers whether WhatsApp's outbox is an acceptable "local queue". If not, the fallback is a simulated phone outbox in the demo, clearly labelled as simulation (task 4 allows "simulated").
+
+## Conversational requirement: checked against the instructions
+
+The official text puts verification **with the midwife, in the conversation**:
+
+- Short description: *"verified by the midwife"*.
+- Main objective: *"guides the midwife through verification"*.
+- Objectives: *"Let the midwife confirm, edit, retake the photo, or enter data manually through follow-up questions."*
+- Task 3 and rubric (20 pts, "Conversational review workflow"): Confirm / Edit / Retake, follow-up questions, manual entry, multi-page sessions.
+
+Moving review to the back-office therefore **changes that part of the submission**; it does not satisfy it as written. Our position:
+
+| Rubric item | Our implementation |
+|-------------|--------------------|
+| Confirm / Edit | Yes, as a one-question-at-a-time chat in the back-office screen |
+| Follow-up questions on illegible fields | Yes (`ILLEGIBLE` / `NEEDS_REVIEW` must be answered before registration) |
+| Manual entry when AI is unavailable | Yes (single encounter in the MVP) |
+| Multi-page sessions | Yes (provisional grouping, split/regroup) |
+| Retake photo | **Not yet**: would be a WhatsApp message to the midwife asking for a new photo of a given page |
+| Actor = midwife | **No**: actor is back-office staff, following the organizers' verbal guidance |
+
+Actions: get the organizers' guidance **in writing**; state the deviation in the README and the demo narration; keep the review logic channel-agnostic (same API) so it could be offered to the midwife in WhatsApp if required.
 
 ## Privacy
 
-Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs; synthetic dataset only unless approved for third-party models.
+Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs (the server logs paths only, never query strings or bodies); synthetic data only for third-party models unless approved.

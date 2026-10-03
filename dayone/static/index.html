@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DayOne – prototype</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>DayOne <span>prototype à fixtures</span></h1>
+    <div class="controls">
+      <label>Agent back-office <input id="reviewer" value="agent.demo" maxlength="60" autocomplete="off"></label>
+      <label class="toggle"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
+      <button id="reset-demo" type="button" class="ghost">Réinitialiser la démo</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="phone" aria-label="WhatsApp simulé de la sage-femme">
+      <div class="phone-header">
+        <strong>WhatsApp (simulé)</strong>
+        <span id="sender-label"></span>
+      </div>
+      <div id="thread" class="thread" aria-live="polite"></div>
+      <div class="composer">
+        <div class="composer-head">
+          <span>Photos de la fiche</span>
+          <label><input type="checkbox" id="show-all-media"> toutes les images</label>
+        </div>
+        <div id="media-grid" class="media-grid"></div>
+        <div class="composer-actions">
+          <button id="send-photos" type="button" class="primary" disabled>Envoyer</button>
+          <button id="replay-last" type="button" class="ghost" disabled
+                  title="Renvoie le dernier webhook avec le même identifiant de message">Rejouer le dernier webhook</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="backoffice" aria-label="Back-office">
+      <div class="queue-panel">
+        <h2>File de vérification</h2>
+        <ul id="queue" class="queue"></ul>
+      </div>
+      <div id="review" class="review-panel"></div>
+      <div class="timeline-panel">
+        <div class="timeline-head">
+          <h2>Suivi de la patiente</h2>
+          <select id="patient-select" aria-label="Patiente"></select>
+        </div>
+        <div id="timeline"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>
