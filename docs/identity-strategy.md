@@ -4,12 +4,12 @@ Inputs are fiche photos only. No ID cards, no names, no extra steps for midwives
 
 ## 1. Facility-scoped patient keys
 
-- Each WhatsApp sender is registered to **one facility** (`senders` table). A document inherits the sender's facility.
+- Each WhatsApp sender is registered to **one facility** (`senders` table). A document inherits the sender's facility. In the MVP the only sender is a seeded demo number; there is no registration flow yet.
 - A patient belongs to one facility. Link keys are unique **within a facility only**:
   - `registry_file_number`: *N° de la fiche* on the cover.
   - `midwife_patient_code`: code the midwife writes on the booklet (consignes' random code; e.g. `CM: 164125`).
 - The same number at two facilities means two different patients. There is no cross-facility matching in the MVP.
-- Keys are normalized before comparison: uppercase, separators removed, leading `CM` label stripped from the code.
+- Keys are stored in canonical form and compared exactly. The validator only accepts digits for `registry_file_number` and `A-Z 0-9 -` for `midwife_patient_code`. Reviewer input is normalized first: separators are removed from the file number, and the code is uppercased with spaces and the leading `CM` label removed.
 - `patient_id` (`PAT-000001`) is generated at registration and never derived from keys.
 
 ## 2. Candidate search

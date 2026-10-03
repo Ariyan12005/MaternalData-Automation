@@ -2,7 +2,7 @@
 
 Platform that turns **photos of paper maternal registries** into structured digital records, **tracks each woman across visits**, and routes uncertain extractions to **back-office review**.
 
-**Midwives only send documents** on WhatsApp; they do not manage patients or verify fields in chat.
+**Midwives only send documents** on WhatsApp; they do not manage patients or verify fields in chat. In the current MVP, WhatsApp is **simulated** in the browser and extraction uses **fixtures** (see [Simulator vs. real integration](#simulator-vs-real-integration)).
 
 **Challenge:** *Une sage-femme, un téléphone et une IA* / *The Offline Midwife* (Challenge ID **17**).
 
@@ -55,7 +55,7 @@ The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 f
 
 ### Demo script
 
-1. **Midwife (left phone):** select `1-1.jpg` then `1-5.jpg`, then press **Envoyer**. Each page gets an acknowledgment, and the document appears in the queue as a provisional group.
+1. **Midwife (simulated phone on the left):** select `1-1.jpg` then `1-5.jpg`, then press **Envoyer**. Each page gets an acknowledgment, and the document appears in the queue as a provisional group.
 2. Wait about 8 s (the grouping window). The fixture extractor produces a draft with 3 visits and **2 uncertain fields**.
 3. **Back-office:** answer the questions:
    - Hauteur utérine (2e trimestre – visite 1) is illegible ("2? cm"). Click **Corriger** and enter `25`.
@@ -77,10 +77,22 @@ The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 f
 | `dayone/server.py`, `dayone/static/` | Aymane | HTTP API, simulated WhatsApp, back-office screen |
 | `tests/` | all | Schema contract + end-to-end flow (idempotency, restart, grouping) |
 
-### Known limitations
+### Simulator vs. real integration
 
-- **Verification is done by back-office staff, not the midwife.** The official instructions say "verified by the midwife". This is a deliberate deviation based on the organizers' verbal guidance, still to be confirmed in writing (see [docs/operating-model.md](./docs/operating-model.md)).
-- **Retake photo** is not implemented.
-- **Offline:** phone-side buffering relies on WhatsApp's own outbox. Our durable queue is the platform database. There is no on-device encrypted storage and no encryption at rest yet.
-- The extractor is a fixture lookup by page set (`1-1.jpg` + `1-4.jpg` or `1-1.jpg` + `1-5.jpg`). Other page sets fail and go to manual entry. Fixture values are illustrative and not ground truth.
-- Manual entry covers a single encounter. There is no authentication; the reviewer name is free text. `SYNCED` is not implemented.
+| Part | In the MVP | Real integration |
+|------|------------|------------------|
+| WhatsApp inbound | Browser phone panel posts `{sender_id, message_id, media_ref}` to `/api/whatsapp/messages`. Images must already be in `data/Paper Registry/` | Not started: Meta webhook format, signature check, media download |
+| WhatsApp outbound | Acknowledgments stored in the database and shown in the simulated thread | Not started: sending through the Cloud API |
+| Senders | One seeded demo number mapped to *C/S Sidi Smail* | Not started: sender registration |
+| Extraction | `FixtureExtractor` returns a hand-written draft for `1-1.jpg` + `1-4.jpg` or `1-1.jpg` + `1-5.jpg`; any other page set fails and goes to manual entry. Values are illustrative, not ground truth | Not started: OCR / vision model behind the same interface |
+| AI outage | "IA disponible" toggle | Would be a real extractor timeout or failure |
+
+### Open blockers and limitations
+
+Tracked in [tasks.md](./tasks.md#blockers-and-open-gaps-keep-visible-until-resolved).
+
+- **Organizer confirmation (not obtained).** Verification is done by back-office staff, not the midwife, but the official instructions say "verified by the midwife". This deviation rests on verbal guidance and still needs written confirmation. The same applies to using WhatsApp's outbox as the phone-side offline queue. See [docs/operating-model.md](./docs/operating-model.md).
+- **No encryption at rest.** `var/dayone.sqlite3` is a plain SQLite file.
+- **No authentication.** Every `/api/*` route is open, including `POST /api/demo/reset`, which wipes the database. The reviewer name is free text. The server listens on `127.0.0.1` only by default and uses plain HTTP.
+- **Offline gaps.** There is no on-device encrypted storage, and no demo of "offline capture, then return of connectivity". The demo shows the platform-side equivalent instead (AI outage, then recovery). `SYNCED` is not implemented.
+- **Retake photo** is not implemented. Manual entry covers a single encounter and is only offered after a failed extraction.

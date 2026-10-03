@@ -32,6 +32,8 @@ Keys are unique **per facility**. A visit is identified by (`patient_id`, `encou
 2. Auto-reply per page: *« Reçu : page N. Merci, le traitement est en cours. »*
 3. No clinical Q&A in the midwife thread.
 
+In the MVP this channel is a **simulator**. A browser phone panel posts JSON to `/api/whatsapp/messages`, and acknowledgments are stored and displayed but never sent to a phone. The real Meta Cloud API integration has not been started: webhook format, signature check, media download and outbound messages are all missing.
+
 ## Offline: where the durable queue lives
 
 Decision: **no companion app**. The midwife's phone runs WhatsApp only.
@@ -69,7 +71,7 @@ Moving review to the back-office therefore **changes that part of the submission
 |-------------|--------------------|
 | Confirm / Edit | Yes, as a one-question-at-a-time chat in the back-office screen |
 | Follow-up questions on illegible fields | Yes (`ILLEGIBLE` / `NEEDS_REVIEW` must be answered before registration) |
-| Manual entry when AI is unavailable | Yes (single encounter in the MVP) |
+| Manual entry when AI is unavailable | **Partly**: only after a failed extraction (`PROCESSING_FAILED`), one encounter; not offered while documents wait for an AI outage to end |
 | Multi-page sessions | Yes (provisional grouping, split/regroup) |
 | Retake photo | **Not yet**: would be a WhatsApp message to the midwife asking for a new photo of a given page |
 | Actor = midwife | **No**: actor is back-office staff, following the organizers' verbal guidance |
@@ -78,4 +80,14 @@ Actions: get the organizers' guidance **in writing**; state the deviation in the
 
 ## Privacy
 
-Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs (the server logs paths only, never query strings or bodies); synthetic data only for third-party models unless approved.
+Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs; local storage must be encrypted; synthetic data only for third-party models unless approved.
+
+| Control | State in the MVP |
+|---------|------------------|
+| Only the 12 contract fields can be stored | Done: `validate_draft` rejects unknown fields |
+| Direct identifiers detected on the page | Recorded by hand in the fixtures (`pii_detected`); no real detection yet |
+| PHI in logs | Request logs contain the path only, never query strings or bodies |
+| Original images and ground truth | Read only; pages reference files in `data/Paper Registry/` with a SHA-256 hash |
+| Encryption at rest | **Not implemented** (plain SQLite in `var/`) |
+| Authentication / roles | **Not implemented**: all API routes are open, including the demo reset; reviewer name is free text |
+| Transport | Plain HTTP, bound to `127.0.0.1` by default |

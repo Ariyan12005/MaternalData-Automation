@@ -49,8 +49,8 @@ Every field, at both levels, has the same shape:
 
 ```json
 {
-  "raw_text": "2?/12/25",
-  "value": "2025-12-21",
+  "raw_text": "1?/12/25",
+  "value": "2025-12-12",
   "unit": null,
   "confidence": 0.42,
   "field_status": "NEEDS_REVIEW",
@@ -96,7 +96,7 @@ Append-only:
   "at": "2026-10-03T18:42:10+00:00",
   "by": "agent.demo",
   "action": "CORRECT",
-  "previous": {"value": "2025-12-21", "field_status": "NEEDS_REVIEW"},
+  "previous": {"value": "2025-12-12", "field_status": "NEEDS_REVIEW"},
   "new": {"value": "2025-12-19", "field_status": "KNOWN"}
 }
 ```
@@ -123,7 +123,7 @@ One draft per document (re-extraction replaces it and increments `draft_revision
 }
 ```
 
-`extraction.extractor` is `fixture`, `manual`, or the real model name; `extractor_version` must change whenever prompts/models change so results are traceable.
+`extraction.extractor` is `fixture`, `manual`, or the real model name (only `fixture` and `manual` exist today); `extractor_version` must change whenever prompts/models change so results are traceable.
 
 ## Identifiers
 
