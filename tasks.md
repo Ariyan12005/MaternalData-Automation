@@ -267,6 +267,17 @@ Agreed and implemented: `docs/schema.md` (fields, statuses, IDs, extraction vers
 
 ## Ariyan — Backend / records / sync / privacy
 
+### Part 3 implementation (ariyan-backend)
+
+Atlas encrypted persistence and original-photo storage, encrypted bridge outbox,
+extraction leases/callbacks, grouped upload APIs, selected-field update controls,
+visit version conflicts and timeline history are implemented. See
+`docs/backend-part3.md` for contracts and Windows setup in `README.md`.
+Live Atlas verification requires an Atlas URI; real Meta transport and OCR remain
+teammate integrations. Shared-token authentication is implemented; per-user/facility
+RBAC, automated retention and downstream export remain gaps. The fixture demo
+remains SQLite and unencrypted.
+
 ### Goals
 
 - **Product center:** longitudinal **patient registry** (visits timeline, documents, link keys).
@@ -282,20 +293,20 @@ Agreed and implemented: `docs/schema.md` (fields, statuses, IDs, extraction vers
 
 - [ ] Encryption at rest for the database and stored images; auth on admin APIs.
 - [ ] Data model: `Patient`, `Visit`, `Document` (multipage), `FieldValue`, `ReviewTask`, `Job`, `MediaBlob`, `MidwifeSender` (WhatsApp id only).
-- [ ] API for Aymane ingest: `POST /webhooks/whatsapp`, attach media to `Document`.
-- [ ] API for back-office: list review queue, get draft, patch fields, confirm visit, list match candidates.
-- [ ] API for Fatma: dequeue image jobs, post extraction result, update lifecycle to `AI_PROCESSED`.
-- [ ] Persist raw + normalized values, confidence, field_status, validation_flags, correction history, verifier + timestamp.
-- [ ] Store original images encrypted at rest; link to record ID, capture time, midwife ID, processing status; role-restricted download.
+- [x] API for Aymane ingest: `POST /webhooks/whatsapp`, attach media to `Document`.
+- [x] API for back-office: list review queue, get draft, patch fields, confirm visit, list match candidates.
+- [x] API for Fatma: dequeue image jobs, post extraction result, update lifecycle to `AI_PROCESSED`.
+- [x] Persist raw + normalized values, confidence, field_status, validation_flags, correction history, verifier + timestamp.
+- [x] Store original images encrypted at rest; link to record ID, capture time, midwife ID, processing status; role-restricted download.
 - [x] Patient linking: facility-scoped `registry_file_number` + `midwife_patient_code`; strong match only **suggests**; reviewer selects; never auto-create.
-- [ ] Patient timeline API: list visits/documents for internal patient id (for demo dashboard).
-- [ ] Idempotency: WhatsApp `message_id`, job IDs, confirm tokens → no duplicate visits on retry.
+- [x] Patient timeline API: list visits/documents for internal patient id (for demo dashboard).
+- [x] Idempotency: WhatsApp `message_id`, job IDs, confirm tokens → no duplicate visits on retry.
 - [ ] Transactional confirm: `VALIDATED` + `REGISTERED` then trigger outbound notification job.
 - [ ] Offline queue module: `CAPTURED` / `PENDING_AI` while offline; sync worker on reconnect; state machine tests.
 - [ ] Local encrypted store spec (mobile/simulator): what gets queued before sync — document for README.
 - [ ] Security: HTTPS, auth on admin APIs, no PII in logs, retention policy for temp files, env-based keys.
 - [ ] Export: anonymized JSON/CSV for demo dashboard (optional bonus).
-- [ ] Re-digitization: same keys photographed again → surface existing document in **review queue** for selective update.
+- [x] Re-digitization: same keys photographed again → surface existing document in **review queue** for selective update.
 
 ### Offline / recovery matrix
 

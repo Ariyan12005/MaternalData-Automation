@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
+import hmac
+import base64
 import json
 import logging
 import mimetypes
@@ -19,18 +22,34 @@ from .store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-MAX_BODY_BYTES = 64 * 1024
+MAX_BODY_BYTES = 12 * 1024 * 1024
 
 log = logging.getLogger("dayone")
 
 
 def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8) -> DayOneService:
-    return DayOneService(
-        Store(db_path),
-        FixtureExtractor(REPO_ROOT / "fixtures"),
-        REPO_ROOT,
-        grouping_window_seconds=grouping_window_seconds,
-    )
+    mode = os.environ.get("DAYONE_STORAGE", "sqlite")
+    if mode not in ("sqlite", "mongodb"):
+        raise ValueError("DAYONE_STORAGE must be sqlite or mongodb")
+    secure = mode == "mongodb"
+    key = os.environ.get("DAYONE_ENCRYPTION_KEY")
+    if secure:
+        if not os.environ.get("DAYONE_API_TOKEN"):
+            raise ValueError("Configure DAYONE_API_TOKEN before Atlas startup")
+        from .mongo_store import MongoStore
+        store = MongoStore(os.environ.get("DAYONE_MONGODB_URI"), os.environ.get("DAYONE_MONGODB_DATABASE", "dayone"))
+    else:
+        store = Store(db_path)
+    media_store = None
+    if secure:
+        from .media import MongoMediaStore
+        media_store = MongoMediaStore(store.db, store.cipher)
+    elif key:
+        from .media import MediaStore
+        media_store = MediaStore(REPO_ROOT / "var" / "media")
+    return DayOneService(store, None if os.environ.get("DAYONE_EXTRACTOR") == "external" else FixtureExtractor(REPO_ROOT / "fixtures"), REPO_ROOT,
+                         grouping_window_seconds=grouping_window_seconds, media_store=media_store)
+
 
 
 class Api:
@@ -38,13 +57,19 @@ class Api:
         self.service = service
         s = service
         self.routes = [
+            ("POST", r"/api/admin/senders", lambda m, q, b, r: s.enroll_sender(**b)),
+            ("POST", r"/api/whatsapp/uploads", lambda m, q, b, r: s.ingest_upload(**b)),
+            ("POST", r"/webhooks/whatsapp", lambda m, q, b, r: s.ingest_upload(**b)),
+            ("POST", r"/api/extraction/jobs/claim", lambda m, q, b, r: s.claim_job()),
+            ("POST", r"/api/extraction/jobs/(JOB-\d+)/result", lambda m, q, b, r: s.complete_job(m[1], **b)),
+            ("POST", r"/api/documents/(DOC-\d+)/close", lambda m, q, b, r: s.close_capture(m[1]) or {"ok": True}),
             ("GET", r"/api/system", lambda m, q, b, r: s.system_info()),
             ("POST", r"/api/system/ai", lambda m, q, b, r: s.set_ai_available(bool(b.get("available")))),
             ("POST", r"/api/demo/reset", self._reset),
             ("GET", r"/api/senders", lambda m, q, b, r: s.list_senders()),
             ("GET", r"/api/media", lambda m, q, b, r: s.list_media()),
             ("POST", r"/api/whatsapp/messages", lambda m, q, b, r: s.ingest_photo(
-                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"))),
+                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"), group_id=b.get("group_id"))),
             ("GET", r"/api/whatsapp/thread", lambda m, q, b, r: s.thread(_query(q, "sender_id"))),
             ("GET", r"/api/documents", lambda m, q, b, r: s.list_documents()),
             ("GET", r"/api/documents/(DOC-\d+)", lambda m, q, b, r: s.get_document(m[1])),
@@ -59,9 +84,9 @@ class Api:
                 m[1], reviewer=r, existing_visit_decisions=b.get("existing_visit_decisions"),
                 expected_revision=b.get("expected_revision"))),
             ("POST", r"/api/documents/(DOC-\d+)/manual-entry", lambda m, q, b, r: s.start_manual_entry(
-                m[1], reviewer=r)),
+                m[1], reviewer=r, expected_revision=b.get("expected_revision"))),
             ("POST", r"/api/pages/(PAGE-\d+)/move", lambda m, q, b, r: s.move_page(
-                m[1], reviewer=r, target_document_id=b.get("target_document_id"))),
+                m[1], reviewer=r, target_document_id=b.get("target_document_id"), expected_revision=b.get("expected_revision"), target_expected_revision=b.get("target_expected_revision"))),
             ("GET", r"/api/patients", lambda m, q, b, r: s.list_patients()),
             ("GET", r"/api/patients/(PAT-\d+)/timeline", lambda m, q, b, r: s.patient_timeline(m[1])),
         ]
@@ -75,11 +100,21 @@ class Api:
             match = re.fullmatch(pattern, path)
             if match and route_method == method:
                 try:
+                    if method == "POST" and path.endswith(("/fields", "/patient", "/confirm", "/move", "/manual-entry")) and type(body.get("expected_revision")) is not int:
+                        raise Invalid("REVISION_REQUIRED", "Provide integer expected_revision")
+                    if path.endswith("/move") and body.get("target_document_id") and type(body.get("target_expected_revision")) is not int:
+                        raise Invalid("REVISION_REQUIRED", "Provide target_expected_revision for regrouping")
+                    if path.endswith("/confirm"):
+                        decisions = body.get("existing_visit_decisions", {})
+                        if not isinstance(decisions, dict):
+                            raise Invalid("INVALID_DECISIONS", "Visit decisions must be an object")
+                        if any(value == "UPDATE" for value in decisions.values()):
+                            raise Invalid("VISIT_VERSION_REQUIRED", "UPDATE requires selected fields and expected_version")
                     return HTTPStatus.OK, handler(match, query, body, reviewer)
                 except ServiceError as exc:
                     return exc.status, {"error": {"code": exc.code, "message": exc.message, "details": exc.details}}
                 except Exception:
-                    log.exception("unhandled error on %s %s", method, path)
+                    log.error("request failed on %s %s", method, path)
                     return HTTPStatus.INTERNAL_SERVER_ERROR, {
                         "error": {"code": "INTERNAL", "message": "Erreur interne.", "details": None}}
         return HTTPStatus.NOT_FOUND, {"error": {"code": "NOT_FOUND", "message": "Route inconnue.", "details": None}}
@@ -104,7 +139,20 @@ def make_handler(api: Api):
 
         def _handle(self, method: str) -> None:
             url = urlparse(self.path)
-            if url.path.startswith("/api/"):
+            token = os.environ.get("DAYONE_API_TOKEN")
+            if token:
+                supplied = self.headers.get("Authorization", "")
+                authenticated = hmac.compare_digest(supplied, "Bearer " + token)
+                if supplied.startswith("Basic "):
+                    try:
+                        credentials = base64.b64decode(supplied[6:], validate=True).decode("utf-8")
+                        authenticated = hmac.compare_digest(credentials, "dayone:" + token)
+                    except (ValueError, UnicodeDecodeError):
+                        authenticated = False
+                if not authenticated:
+                    self._send_error(HTTPStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Provide backend bearer token")
+                    return
+            if url.path.startswith(("/api/", "/webhooks/")):
                 body = {}
                 if method == "POST":
                     body = self._read_json()
@@ -121,14 +169,20 @@ def make_handler(api: Api):
                 self._send(HTTPStatus.METHOD_NOT_ALLOWED, b"", "text/plain")
 
         def _read_json(self):
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0:
+                self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_LENGTH", "Invalid body length")
+                return None
             if length > MAX_BODY_BYTES:
                 self._send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE", "Requête trop volumineuse.")
                 return None
             raw = self.rfile.read(length) if length else b"{}"
             try:
                 body = json.loads(raw or b"{}")
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 body = None
             if not isinstance(body, dict):
                 self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_JSON", "Corps JSON invalide.")
@@ -141,12 +195,12 @@ def make_handler(api: Api):
 
         def _send_media(self, media_ref: str) -> None:
             try:
-                path = api.service.resolve_media(media_ref)
+                data = api.service.read_media(media_ref)
             except ServiceError:
                 self._send(HTTPStatus.NOT_FOUND, b"", "text/plain")
                 return
-            self._send(HTTPStatus.OK, path.read_bytes(), mimetypes.guess_type(path.name)[0] or "application/octet-stream",
-                       cache=True)
+            self._send(HTTPStatus.OK, data, mimetypes.guess_type(media_ref)[0] or "application/octet-stream",
+                       cache=False)
 
         def _send_static(self, path: str) -> None:
             name = "index.html" if path in ("", "/") else path.lstrip("/")
@@ -160,6 +214,8 @@ def make_handler(api: Api):
 
         def _send(self, status, data: bytes, content_type: str, *, cache: bool = False) -> None:
             self.send_response(status)
+            if status == HTTPStatus.UNAUTHORIZED:
+                self.send_header("WWW-Authenticate", 'Basic realm="DayOne staff", charset="UTF-8"')
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "max-age=3600" if cache else "no-store")
@@ -182,7 +238,7 @@ def _run_worker(service: DayOneService, stop: threading.Event, interval: float =
         try:
             service.tick()
         except Exception:
-            log.exception("queue tick failed")
+            log.error("queue tick failed; pending records retained")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -195,7 +251,8 @@ def main(argv: list[str] | None = None) -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     service = build_service(args.db, grouping_window_seconds=args.window)
-    service.ensure_seed()
+    if os.environ.get("DAYONE_STORAGE", "sqlite") != "mongodb":
+        service.ensure_seed()
 
     server = ThreadingHTTPServer((args.host, args.port), make_handler(Api(service)))
     stop = threading.Event()

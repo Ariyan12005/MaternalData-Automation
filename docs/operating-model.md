@@ -79,3 +79,13 @@ Actions: get the organizers' guidance **in writing**; state the deviation in the
 ## Privacy
 
 Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs (the server logs paths only, never query strings or bodies); synthetic data only for third-party models unless approved.
+
+
+## Part 3 implementation update
+
+Secure Atlas mode now stores encrypted records and original uploads; SQLite
+remains the fixture demo. An optional encrypted bridge/simulator outbox captures
+photos while disconnected and retries uploads and batch closure. This is not a
+phone companion app and does not establish WhatsApp device storage guarantees.
+Backend bearer/Basic authentication uses a shared credential; individual facility
+roles and automated retention remain gaps. See [backend contracts](backend-part3.md).

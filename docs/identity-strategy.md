@@ -69,3 +69,14 @@ A re-photographed booklet therefore produces `EXISTS_SAME` for columns already r
 - Back-office can **split** (move a page to a new document) or **regroup** (move a page to another open document of the same facility).
 - Regrouping resets the affected drafts (re-extraction; earlier field reviews on those drafts are discarded and logged).
 - Registration sets the grouping to `CONFIRMED`: the reviewer has seen the page list in the summary.
+
+
+## Part 3 refinements
+
+Suggestions require both paper codes, each KNOWN with confidence >= 0.75, and one
+candidate matching both. One readable key lists candidates but cannot produce a
+suggestion. Staff still select explicitly. Existing visit updates accept selected
+differing fields and a version fingerprint; stale visits return 409. The UI
+supplies this fingerprint and checkboxes; HTTP unversioned UPDATE strings are
+refused. Previous values and source documents remain in history. See
+[backend contracts](backend-part3.md).

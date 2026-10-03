@@ -7,9 +7,19 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-TABLES = ("events", "messages", "visits", "patients", "pages", "documents", "settings", "counters", "senders", "facilities")
+TABLES = ("jobs", "capture_groups", "events", "messages", "visits", "patients", "pages", "documents", "settings", "counters", "senders", "facilities")
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS capture_groups (
+    group_id TEXT NOT NULL, sender_id TEXT NOT NULL, document_id TEXT NOT NULL,
+    PRIMARY KEY(group_id, sender_id)
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id TEXT PRIMARY KEY, document_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    token TEXT NOT NULL, lease_until TEXT NOT NULL, state TEXT NOT NULL,
+    UNIQUE(document_id, revision)
+);
+
 CREATE TABLE IF NOT EXISTS facilities (
     facility_id TEXT PRIMARY KEY,
     name TEXT NOT NULL

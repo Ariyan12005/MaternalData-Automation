@@ -196,11 +196,18 @@ function confirmDocument() {
 }
 
 function startManualEntry() {
-  return act(() => api("POST", `/api/documents/${state.documentId}/manual-entry`, {}));
+  return act(() => api("POST", `/api/documents/${state.documentId}/manual-entry`, { expected_revision: revision() }));
 }
 
 function movePage(pageId, target) {
-  return act(() => api("POST", `/api/pages/${pageId}/move`, { target_document_id: target }));
+  const sourceRevision = revision();
+  return act(async () => {
+    const targetDetail = target ? await api("GET", `/api/documents/${target}`) : null;
+    return api("POST", `/api/pages/${pageId}/move`, {
+      target_document_id: target, expected_revision: sourceRevision,
+      target_expected_revision: targetDetail?.document.revision,
+    });
+  });
 }
 
 function selectDocument(documentId) {
@@ -638,10 +645,23 @@ function summary(d) {
     if (match.outcome === "EXISTS_DIFFERENT") {
       const diffs = match.diffs.map((diff) =>
         `${spec(diff.field).label} ${fmtValue(diff.field, diff.existing)} → ${fmtValue(diff.field, diff.draft)}`);
+      const chosen = typeof state.decisions[index] === "object" && state.decisions[index] !== null
+        ? state.decisions[index].fields : match.diffs.map(diff => diff.field);
+      const selectFields = (fields) => {
+        state.decisions[index] = fields.length
+          ? { action: "UPDATE", fields, expected_version: match.existing_version } : null;
+        renderReview();
+      };
       decision = el("div", { class: "decision" }, el("small", {}, diffs.join(" ; ")),
-        ["UPDATE", "KEEP"].map((choice) => button(choice === "UPDATE" ? "Mettre à jour" : "Garder l'existante",
-          () => { state.decisions[index] = choice; renderReview(); },
-          state.decisions[index] === choice ? "primary small" : "small")));
+        match.diffs.map(diff => el("label", {}, el("input", {
+          type: "checkbox", checked: chosen.includes(diff.field),
+          onchange: event => selectFields(event.target.checked
+            ? [...chosen, diff.field] : chosen.filter(field => field !== diff.field)),
+        }), spec(diff.field).label)),
+        button("Mettre ? jour les champs coch?s", () => selectFields(chosen),
+          state.decisions[index]?.action === "UPDATE" ? "primary small" : "small"),
+        button("Garder l'existante", () => { state.decisions[index] = "KEEP"; renderReview(); },
+          state.decisions[index] === "KEEP" ? "primary small" : "small"));
     }
     return el("tr", {},
       el("td", {}, slotLabel(match.slot)),

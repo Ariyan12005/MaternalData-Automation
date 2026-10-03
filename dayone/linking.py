@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 
 from .schema import KEY_FIELDS
@@ -56,7 +57,9 @@ def suggested_patient(candidates: list[dict], draft: dict) -> str | None:
         return None
     fields = draft["document_fields"]
     present = [key for key in KEY_FIELDS if fields[key]["value"] is not None]
-    if not all(fields[key]["field_status"] == "KNOWN" for key in present):
+    if len(present) != len(KEY_FIELDS) or set(strong[0]["matched_keys"]) != set(KEY_FIELDS):
+        return None
+    if not all(fields[key]["field_status"] == "KNOWN" and isinstance(fields[key]["confidence"], (int, float)) and fields[key]["confidence"] >= 0.75 for key in present):
         return None
     return strong[0]["patient_id"]
 
@@ -84,7 +87,7 @@ def encounter_matches(db: sqlite3.Connection, patient_id: str | None, draft: dic
             result["outcome"] = "MISSING_DATE"
         elif patient_id is not None:
             row = db.execute(
-                "SELECT visit_id, slot, fields_json FROM visits "
+                "SELECT visit_id, slot, fields_json, history_json, source_documents_json FROM visits "
                 "WHERE patient_id = ? AND encounter_type = ? AND visit_date = ?",
                 (patient_id, encounter["encounter_type"], visit_date),
             ).fetchone()
@@ -99,8 +102,13 @@ def encounter_matches(db: sqlite3.Connection, patient_id: str | None, draft: dic
                 result.update(
                     outcome="EXISTS_DIFFERENT" if diffs else "EXISTS_SAME",
                     existing_visit_id=row["visit_id"],
+                    existing_version=visit_version(row),
                     diffs=diffs,
                     flags=["SLOT_DIFFERS"] if row["slot"] != encounter["slot"] else [],
                 )
         results.append(result)
     return results
+
+
+def visit_version(row):
+    return hashlib.sha256(json.dumps([row["fields_json"], row["history_json"], row["source_documents_json"]]).encode()).hexdigest()

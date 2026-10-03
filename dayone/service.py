@@ -66,13 +66,14 @@ def _dumps(value) -> str:
 
 
 class DayOneService:
-    def __init__(self, store: Store, extractor, repo_root: Path, *, grouping_window_seconds: int = 8, clock=utcnow):
+    def __init__(self, store: Store, extractor, repo_root: Path, *, grouping_window_seconds: int = 8, clock=utcnow, media_store=None):
         self.store = store
         self.extractor = extractor
         self.repo_root = Path(repo_root).resolve()
         self.media_dir = (self.repo_root / "data" / "Paper Registry").resolve()
         self.window = timedelta(seconds=grouping_window_seconds)
         self.clock = clock
+        self.media_store = media_store
 
     # ------------------------------------------------------------------ setup
 
@@ -155,12 +156,111 @@ class DayOneService:
             raise NotFound("MEDIA_NOT_FOUND", "Image introuvable.")
         return path
 
+    def read_media(self, media_ref):
+        if isinstance(media_ref, str) and media_ref.startswith("secure/"):
+            if self.media_store is None:
+                raise NotFound("MEDIA_NOT_FOUND", "Encrypted media is unavailable")
+            try:
+                return self.media_store.get(media_ref)
+            except (ValueError, FileNotFoundError):
+                raise NotFound("MEDIA_NOT_FOUND", "Image unavailable") from None
+        return self.resolve_media(media_ref).read_bytes()
+
+    def ingest_upload(self, *, sender_id, message_id, image_base64, suffix=".jpg", group_id=None):
+        import base64
+        import binascii
+        if self.media_store is None:
+            raise Invalid("SECURE_MEDIA_DISABLED", "Configure an encryption key for photo uploads")
+        with self.store.read() as db:
+            if db.execute("SELECT 1 FROM senders WHERE sender_id=?", (sender_id,)).fetchone() is None:
+                raise Forbidden("UNKNOWN_SENDER", "Sender is not enrolled")
+        try:
+            if not isinstance(image_base64, str):
+                raise ValueError()
+            data = base64.b64decode(image_base64, validate=True)
+            ref = self.media_store.put(data, suffix)
+        except (ValueError, binascii.Error):
+            raise Invalid("INVALID_IMAGE", "Upload must be a JPEG or PNG of at most 8 MiB") from None
+        return self.ingest_photo(sender_id=sender_id, message_id=message_id, media_ref=ref, group_id=group_id)
+
+    @staticmethod
+    def _valid_visit_decision(decision, match):
+        if isinstance(decision, str):
+            return decision in ("UPDATE", "KEEP")
+        return (isinstance(decision, dict) and set(decision) == {"action", "fields", "expected_version"}
+                and decision["action"] == "UPDATE" and isinstance(decision["fields"], list)
+                and bool(decision["fields"]) and all(isinstance(f, str) for f in decision["fields"])
+                and set(decision["fields"]) <= {d["field"] for d in match["diffs"]})
+
+    def enroll_sender(self, *, facility_id, facility_name, sender_id, label):
+        for value in (facility_id, facility_name, sender_id, label):
+            if not isinstance(value, str) or not 1 <= len(value) <= 100:
+                raise Invalid("INVALID_ENROLLMENT", "Enrollment fields must contain 1 to 100 characters")
+        with self.store.tx() as db:
+            prior = db.execute("SELECT facility_id FROM senders WHERE sender_id=?", (sender_id,)).fetchone()
+            if prior and prior["facility_id"] != facility_id:
+                raise Conflict("SENDER_FACILITY_CONFLICT", "Sender is already assigned to another facility")
+            db.execute("INSERT OR IGNORE INTO facilities VALUES (?, ?)", (facility_id, facility_name))
+            db.execute("INSERT OR IGNORE INTO senders VALUES (?, ?, ?)", (sender_id, facility_id, label))
+        return {"ok": True}
+
+    def claim_job(self, document_id=None):
+        import secrets
+        now = self.clock()
+        with self.store.tx() as db:
+            if not self._ai_available(db):
+                return None
+            rows = db.execute("SELECT * FROM documents WHERE status='PENDING_AI' ORDER BY document_id").fetchall()
+            for document in rows:
+                if document_id and document["document_id"] != document_id:
+                    continue
+                old = db.execute("SELECT * FROM jobs WHERE document_id=? AND revision=?", (document["document_id"], document["revision"])).fetchone()
+                if old and (old["state"] == "DONE" or datetime.fromisoformat(old["lease_until"]) > now):
+                    continue
+                job_id = old["job_id"] if old else next_id(db, "JOB")
+                token = secrets.token_urlsafe(32)
+                lease = _iso(now + timedelta(minutes=5))
+                db.execute("INSERT INTO jobs VALUES (?, ?, ?, ?, ?, 'LEASED') ON CONFLICT(job_id) DO UPDATE SET token=excluded.token, lease_until=excluded.lease_until, state='LEASED'", (job_id, document["document_id"], document["revision"], token, lease))
+                return {"job_id": job_id, "document_id": document["document_id"], "expected_revision": document["revision"], "token": token, "lease_until": lease, "page_refs": self._page_refs(db, document["document_id"])}
+        return None
+
+    def complete_job(self, job_id, *, token, draft, expected_revision):
+        if type(expected_revision) is not int:
+            raise Invalid("REVISION_REQUIRED", "Extraction callback requires expected_revision")
+        problems = schema.validate_draft(draft)
+        if problems:
+            raise Invalid("INVALID_EXTRACTION", "Extraction violates shared schema", problems)
+        for _scope, _index, _slot, _name, fv in schema.iter_fields(draft):
+            if fv["verification"]["state"] != "UNVERIFIED" or fv["corrections"]:
+                raise Invalid("EXTRACTOR_VERIFICATION", "Extraction cannot claim human verification")
+        now = self.clock()
+        with self.store.tx() as db:
+            job = db.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+            if job is None or not isinstance(token, str) or job["token"] != token:
+                raise Forbidden("INVALID_JOB", "Invalid extraction lease")
+            if job["state"] == "DONE":
+                return {"ok": True, "replayed": True}
+            document = self._load_document(db, job["document_id"])
+            self._check_revision(document, expected_revision)
+            if document["revision"] != job["revision"] or document["status"] != "PENDING_AI" or datetime.fromisoformat(job["lease_until"]) <= now:
+                raise Conflict("STALE_JOB", "Extraction lease expired or document changed")
+            if set(p["page_ref"] for p in draft["pages"]) != set(self._page_refs(db, job["document_id"])):
+                raise Invalid("PAGE_MISMATCH", "Extraction pages differ from capture")
+            draft["extraction"]["processed_at"] = _iso(now)
+            self._save_draft(db, job["document_id"], draft, now)
+            self._set_status(db, job["document_id"], "AI_PROCESSED", now)
+            self._recompute_status(db, job["document_id"], now)
+            db.execute("UPDATE jobs SET state='DONE' WHERE job_id=?", (job_id,))
+        return {"ok": True, "replayed": False}
+
     # ------------------------------------------------------------------ ingest
 
-    def ingest_photo(self, *, sender_id: str, message_id: str, media_ref: str) -> dict:
+    def ingest_photo(self, *, sender_id: str, message_id: str, media_ref: str, group_id: str | None = None) -> dict:
         if not isinstance(message_id, str) or not 1 <= len(message_id) <= 200:
             raise Invalid("MESSAGE_ID_REQUIRED", "Identifiant de message WhatsApp manquant.")
-        digest = hashlib.sha256(self.resolve_media(media_ref).read_bytes()).hexdigest()
+        if group_id is not None and (not isinstance(group_id, str) or not 1 <= len(group_id) <= 100):
+            raise Invalid("INVALID_GROUP", "Group identifier must contain 1 to 100 characters")
+        digest = hashlib.sha256(self.read_media(media_ref)).hexdigest()
         now = self.clock()
         with self.store.tx() as db:
             duplicate = db.execute(
@@ -173,7 +273,12 @@ class DayOneService:
             if sender is None:
                 raise Forbidden("UNKNOWN_SENDER", "Numéro non enregistré auprès d'un établissement.")
 
-            document = self._open_document(db, sender_id, now)
+            group = db.execute("SELECT document_id FROM capture_groups WHERE group_id=? AND sender_id=?", (group_id, sender_id)).fetchone() if group_id else None
+            document = self._load_document(db, group["document_id"]) if group else self._open_document(db, sender_id, now)
+            if group and document["status"] != "CAPTURED":
+                raise Conflict("GROUP_CLOSED", "Capture group is closed; use a new group ID")
+            if group_id and not group:
+                document = None
             if document is None:
                 document_id = next_id(db, "DOC")
                 db.execute(
@@ -187,6 +292,8 @@ class DayOneService:
                 db.execute("UPDATE documents SET last_page_at = ?, updated_at = ? WHERE document_id = ?",
                            (_iso(now), _iso(now), document_id))
 
+            if group_id and not group:
+                db.execute("INSERT INTO capture_groups VALUES (?, ?, ?)", (group_id, sender_id, document_id))
             position = db.execute("SELECT COUNT(*) FROM pages WHERE document_id = ?", (document_id,)).fetchone()[0] + 1
             page_id = next_id(db, "PAGE")
             db.execute(
@@ -205,7 +312,7 @@ class DayOneService:
 
     def _open_document(self, db, sender_id: str, now: datetime):
         row = db.execute(
-            "SELECT * FROM documents WHERE sender_id = ? AND status = 'CAPTURED' ORDER BY document_id DESC LIMIT 1",
+            "SELECT * FROM documents WHERE sender_id = ? AND status = 'CAPTURED' AND document_id NOT IN (SELECT document_id FROM capture_groups) ORDER BY document_id DESC LIMIT 1",
             (sender_id,),
         ).fetchone()
         if row is None:
@@ -235,7 +342,7 @@ class DayOneService:
         """Close expired grouping windows, then extract queued documents if AI is available."""
         now = self.clock()
         with self.store.tx() as db:
-            for row in db.execute("SELECT document_id, last_page_at FROM documents WHERE status = 'CAPTURED'").fetchall():
+            for row in db.execute("SELECT document_id, last_page_at FROM documents WHERE status = 'CAPTURED' AND document_id NOT IN (SELECT document_id FROM capture_groups)").fetchall():
                 if now - datetime.fromisoformat(row["last_page_at"]) > self.window:
                     self._set_status(db, row["document_id"], "PENDING_AI", now)
             if not self._ai_available(db):
@@ -245,8 +352,12 @@ class DayOneService:
         return [document_id for document_id in pending if self.process_document(document_id)]
 
     def process_document(self, document_id: str) -> bool:
-        with self.store.read() as db:
-            refs = self._page_refs(db, document_id)
+        if self.extractor is None:
+            return False
+        job = self.claim_job(document_id)
+        if job is None:
+            return False
+        refs = job["page_refs"]
         draft, failure = None, None
         try:
             draft = self.extractor.extract(refs)
@@ -256,31 +367,33 @@ class DayOneService:
         except ExtractionError as exc:
             failure = (exc.code, exc.message)
         except Exception:
-            log.exception("extraction error for %s; will retry", document_id)
+            log.error("extraction failed for %s; will retry", document_id)
             return False
 
+        if draft is not None:
+            try:
+                self.complete_job(job["job_id"], token=job["token"], draft=draft, expected_revision=job["expected_revision"])
+            except Conflict:
+                return False
+            return True
         now = self.clock()
         with self.store.tx() as db:
             document = db.execute("SELECT * FROM documents WHERE document_id = ?", (document_id,)).fetchone()
-            if document is None or document["status"] != "PENDING_AI" or self._page_refs(db, document_id) != refs:
+            if document is None or document["revision"] != job["expected_revision"] or document["status"] != "PENDING_AI" or self._page_refs(db, document_id) != refs:
                 return False
             if draft is None:
                 db.execute("UPDATE documents SET failure_reason = ? WHERE document_id = ?", (failure[0], document_id))
                 self._set_status(db, document_id, "PROCESSING_FAILED", now,
                                  detail={"code": failure[0], "message": failure[1]})
                 return True
-            draft["extraction"]["processed_at"] = _iso(now)
-            self._save_draft(db, document_id, draft, now)
-            db.execute("UPDATE documents SET failure_reason = NULL WHERE document_id = ?", (document_id,))
-            self._set_status(db, document_id, "AI_PROCESSED", now)
-            self._recompute_status(db, document_id, now)
         return True
 
-    def start_manual_entry(self, document_id: str, *, reviewer: str) -> dict:
+    def start_manual_entry(self, document_id: str, *, reviewer: str, expected_revision: int | None = None) -> dict:
         reviewer = self._reviewer(reviewer)
         now = self.clock()
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
+            self._check_revision(document, expected_revision)
             if document["status"] != "PROCESSING_FAILED":
                 raise Conflict("NOT_FAILED", "La saisie manuelle est réservée aux dossiers en échec d'extraction.")
             self._save_draft(db, document_id, schema.manual_draft(self._page_refs(db, document_id), _iso(now)), now)
@@ -337,6 +450,8 @@ class DayOneService:
                 raise Invalid("UNKNOWN_ACTION", "Action inconnue.")
 
             self._save_draft(db, document_id, draft, now)
+            if field in schema.KEY_FIELDS:
+                db.execute("UPDATE documents SET selection_json=NULL WHERE document_id=?", (document_id,))
             slot = draft["encounters"][encounter_index]["slot"] if scope == "encounter" else None
             self._event(db, document_id, "FIELD_REVIEWED", reviewer, now, {
                 "scope": scope, "encounter_index": encounter_index, "slot": slot, "field": field,
@@ -402,11 +517,15 @@ class DayOneService:
 
             matches = linking.encounter_matches(db, patient_id, draft)
             undecided = [m for m in matches if m["outcome"] == "EXISTS_DIFFERENT"
-                         and decisions.get(str(m["encounter_index"])) not in ("UPDATE", "KEEP")]
+                         and not self._valid_visit_decision(decisions.get(str(m["encounter_index"])), m)]
             if undecided:
                 raise Conflict("DECISION_REQUIRED", "Certaines visites existent déjà avec des valeurs différentes.",
                                {"encounters": undecided})
 
+            for match in matches:
+                decision = decisions.get(str(match["encounter_index"]))
+                if isinstance(decision, dict) and decision["expected_version"] != match.get("existing_version"):
+                    raise Conflict("STALE_VISIT", "Existing visit changed; reload its summary before updating")
             visits = [self._register_encounter(db, document_id, patient_id, draft, match,
                                                decisions.get(str(match["encounter_index"])), reviewer, now)
                       for match in matches]
@@ -447,13 +566,16 @@ class DayOneService:
         outcome = "UNCHANGED"
         if match["outcome"] == "EXISTS_DIFFERENT":
             outcome = "KEPT_EXISTING"
-            if decision == "UPDATE":
+            if decision == "UPDATE" or isinstance(decision, dict):
                 outcome = "UPDATED"
+                selected = set(decision["fields"]) if isinstance(decision, dict) else {d["field"] for d in match["diffs"]}
+                changes = [d for d in match["diffs"] if d["field"] in selected]
                 history.append({
                     "at": _iso(now), "by": reviewer, "document_id": document_id,
-                    "previous": {d["field"]: stored_fields.get(d["field"]) for d in match["diffs"]},
+                    "previous": {d["field"]: stored_fields.get(d["field"]) for d in changes},
+                    "selected_fields": sorted(selected),
                 })
-                for diff in match["diffs"]:
+                for diff in changes:
                     stored_fields[diff["field"]] = fields[diff["field"]]
         db.execute(
             "UPDATE visits SET fields_json = ?, history_json = ?, source_documents_json = ?, updated_at = ? "
@@ -495,7 +617,7 @@ class DayOneService:
 
     # ------------------------------------------------------------------ grouping
 
-    def move_page(self, page_id: str, *, reviewer: str, target_document_id: str | None = None) -> dict:
+    def move_page(self, page_id: str, *, reviewer: str, target_document_id: str | None = None, expected_revision: int | None = None, target_expected_revision: int | None = None) -> dict:
         """Split (no target) or regroup a page; both affected drafts are reset and re-queued."""
         reviewer = self._reviewer(reviewer)
         now = self.clock()
@@ -504,12 +626,14 @@ class DayOneService:
             if page is None:
                 raise NotFound("PAGE_NOT_FOUND", "Page introuvable.")
             source = self._load_document(db, page["document_id"])
+            self._check_revision(source, expected_revision)
             if source["status"] == "REGISTERED":
                 raise Conflict("ALREADY_REGISTERED", "Ce dossier est déjà enregistré.")
             if target_document_id:
                 if target_document_id == source["document_id"]:
                     raise Invalid("SAME_DOCUMENT", "La page est déjà dans ce dossier.")
                 target = self._load_document(db, target_document_id)
+                self._check_revision(target, target_expected_revision)
                 if target["status"] == "REGISTERED":
                     raise Conflict("ALREADY_REGISTERED", "Le dossier cible est déjà enregistré.")
                 if target["facility_id"] != source["facility_id"]:
@@ -668,6 +792,8 @@ class DayOneService:
                                for name, fv in json.loads(row["fields_json"]).items()},
                     "source_documents": json.loads(row["source_documents_json"]),
                     "revisions": len(json.loads(row["history_json"])),
+                    "history": json.loads(row["history_json"]),
+                    "field_details": json.loads(row["fields_json"]),
                     "updated_at": row["updated_at"],
                 }
                 for row in db.execute("SELECT * FROM visits WHERE patient_id = ? ORDER BY visit_date", (patient_id,))
