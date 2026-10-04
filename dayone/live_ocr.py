@@ -156,7 +156,11 @@ def _parse_encounter(lines: list[OcrLine], page_refs: list[str]) -> dict:
 
     # Moroccan paper forms often write TA as ``12/7`` (cmHg), not ``120/70``.
     bp_pattern = r"\b(\d{2,3})\s*[/|]\s*(\d{1,3})\b"
-    bp = _candidate(lines, bp_pattern)
+    # A historical date such as 12/11/2022 must never be mistaken for TA 12/11.
+    bp = next((line for line in lines
+               if not re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", line.text)
+               and line.confidence >= MIN_KNOWN_CONFIDENCE
+               and re.search(bp_pattern, line.text)), None)
     if bp:
         match = re.search(bp_pattern, bp.text)
         assert match is not None

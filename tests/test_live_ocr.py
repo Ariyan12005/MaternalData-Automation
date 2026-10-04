@@ -47,6 +47,15 @@ class LiveOcrTest(unittest.TestCase):
         self.assertEqual(fields["systolic_bp_mmhg"]["field_status"], "KNOWN")
         self.assertEqual(fields["hiv_test"]["field_status"], "NEEDS_REVIEW")
 
+    def test_historical_date_is_never_mistaken_for_blood_pressure(self):
+        extractor = LiveOcrExtractor(self.root, reader=FakeReader([OcrLine("12/11/2022", 0.99)]))
+        from unittest.mock import patch
+        with patch("dayone.live_ocr.assess_photo"):
+            draft = extractor.extract(["data/Paper Registry/1-2.jpg"])
+        fields = draft["encounters"][0]["fields"]
+        self.assertIsNone(fields["systolic_bp_mmhg"]["value"])
+        self.assertIsNone(fields["diastolic_bp_mmhg"]["value"])
+
     def test_small_photo_requires_retake(self):
         extractor = LiveOcrExtractor(self.root, reader=FakeReader([]))
         with self.assertRaises(ExtractionError) as caught:
