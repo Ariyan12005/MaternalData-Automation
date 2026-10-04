@@ -115,6 +115,13 @@ CREATE TABLE IF NOT EXISTS events (
 """
 
 
+def _rollback_journal(image: bytes) -> bytes:
+    """Clear the WAL flag (header bytes 18-19) of a database image: an in-memory copy cannot use a WAL file."""
+    if len(image) >= 20 and image[18:20] == b"\x02\x02":
+        return image[:18] + b"\x01\x01" + image[20:]
+    return image
+
+
 # Columns added after the first release: (table, column, declaration).
 MIGRATIONS = (
     ("pages", "retake_requested_at", "TEXT"),
@@ -151,7 +158,7 @@ class Store:
                 for suffix in ("-wal", "-shm"):
                     Path(self.path + suffix).unlink(missing_ok=True)
             else:
-                self._conn.deserialize(self.cipher.decrypt(raw, b"database"))
+                self._conn.deserialize(_rollback_journal(self.cipher.decrypt(raw, b"database")))
         self._conn.execute("PRAGMA foreign_keys = ON")
         if not self.cipher and self.path != ":memory:":
             self._conn.execute("PRAGMA journal_mode = WAL")
@@ -169,7 +176,7 @@ class Store:
         """Write the encrypted snapshot (no-op for a plain database)."""
         if not self.cipher:
             return
-        blob = self.cipher.encrypt(self._conn.serialize(), b"database")
+        blob = self.cipher.encrypt(_rollback_journal(self._conn.serialize()), b"database")
         temporary = f"{self.path}.tmp"
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "wb") as stream:

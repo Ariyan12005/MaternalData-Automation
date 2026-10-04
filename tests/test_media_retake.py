@@ -73,10 +73,11 @@ class EncryptionTest(unittest.TestCase):
         plain.execute("INSERT INTO facilities(facility_id, name) VALUES ('F1', 'kept')")
         plain.commit()
         plain.close()
-        store = Store(path, Cipher(KEY))
-        with store.read() as db:
-            self.assertEqual(db.execute("SELECT name FROM facilities").fetchone()[0], "kept")
-        store.close()
+        for _ in range(3):  # the converted file must reopen (it used to keep the WAL flag and fail)
+            store = Store(path, Cipher(KEY))
+            with store.read() as db:
+                self.assertEqual(db.execute("SELECT name FROM facilities").fetchone()[0], "kept")
+            store.close()
         self.assertFalse(path.read_bytes().startswith(b"SQLite format 3"))
 
 
