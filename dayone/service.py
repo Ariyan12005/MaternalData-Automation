@@ -981,6 +981,47 @@ class DayOneService:
             "visits": visits,
         }
 
+    # ------------------------------------------------------------------ export and retention
+
+    EXPORT_COLUMNS = ("visit_id", "patient_id", "facility_id", "encounter_type", "visit_date", "slot",
+                      *(spec.name for spec in schema.ENCOUNTER_FIELDS if spec.name != "visit_date"),
+                      "verified_fields", "source_documents")
+
+    def export_visits(self) -> list[dict]:
+        """Anonymized rows for a dashboard: internal IDs and values only (no link keys, no raw text)."""
+        with self.store.read() as db:
+            rows = db.execute(
+                "SELECT v.*, p.facility_id FROM visits v JOIN patients p USING (patient_id) "
+                "ORDER BY v.patient_id, v.visit_date").fetchall()
+        result = []
+        for row in rows:
+            fields = json.loads(row["fields_json"])
+            record = {key: row[key] for key in ("visit_id", "patient_id", "facility_id", "encounter_type", "visit_date", "slot")}
+            for spec in schema.ENCOUNTER_FIELDS:
+                if spec.name != "visit_date":
+                    record[spec.name] = fields.get(spec.name, {}).get("value")
+            record["verified_fields"] = sum(1 for fv in fields.values()
+                                            if fv.get("verification", {}).get("state") in ("CONFIRMED", "CORRECTED"))
+            record["source_documents"] = " ".join(json.loads(row["source_documents_json"]))
+            result.append(record)
+        return result
+
+    def purge_media(self, older_than_days: int) -> int:
+        """Delete uploaded photos whose documents were all synced more than N days ago."""
+        if self.media is None:
+            return 0
+        cutoff = _iso(self.clock() - timedelta(days=older_than_days))
+        with self.store.read() as db:
+            refs = [row["media_ref"] for row in db.execute(
+                "SELECT p.media_ref FROM pages p JOIN documents d USING (document_id) WHERE p.media_ref LIKE 'upload/%' "
+                "GROUP BY p.media_ref HAVING MIN(CASE WHEN d.status = 'SYNCED' AND d.updated_at < ? THEN 1 ELSE 0 END) = 1",
+                (cutoff,))]
+        removed = sum(1 for ref in refs if self.media.delete(ref))
+        if removed:
+            with self.store.tx() as db:
+                self._event(db, None, "MEDIA_PURGED", "system", self.clock(), {"count": removed, "older_than_days": older_than_days})
+        return removed
+
     # ------------------------------------------------------------------ helpers
 
     @staticmethod

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import logging
 import mimetypes
@@ -18,7 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from . import crypto
 from .auth import Auth, AuthError, SESSION_HOURS
-from .extraction import FixtureExtractor
+from .extraction import FixtureExtractor, HttpExtractor
 from .live_ocr import LiveOcrExtractor, PaddleOcrReader, TesseractOcrReader
 from .media import MAX_PHOTO_BYTES, MediaStore
 from .service import DayOneService, Invalid, ServiceError
@@ -46,7 +48,7 @@ log = logging.getLogger("dayone")
 def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extractor_mode: str = "fixture",
                   encrypt: bool = True) -> DayOneService:
     readers = {"tesseract": TesseractOcrReader, "paddleocr": PaddleOcrReader}
-    if extractor_mode != "fixture" and extractor_mode not in readers:
+    if extractor_mode not in ("fixture", "http") and extractor_mode not in readers:
         raise ValueError("Unsupported extractor: " + extractor_mode)
     var_dir = Path(db_path).parent
     keys = crypto.ciphers(crypto.load_master_key(var_dir)) if encrypt else {}
@@ -58,8 +60,15 @@ def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extr
         grouping_window_seconds=grouping_window_seconds,
         media=media,
     )
-    service.extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
-                         else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode](), media=service.read_media))
+    if extractor_mode == "fixture":
+        service.extractor = FixtureExtractor(REPO_ROOT / "fixtures")
+    elif extractor_mode == "http":
+        if not os.environ.get("DAYONE_EXTRACTOR_URL"):
+            raise ValueError("--extractor http needs DAYONE_EXTRACTOR_URL (and DAYONE_EXTRACTOR_TOKEN)")
+        service.extractor = HttpExtractor(os.environ["DAYONE_EXTRACTOR_URL"], os.environ.get("DAYONE_EXTRACTOR_TOKEN", ""),
+                                          service.read_media)
+    else:
+        service.extractor = LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode](), media=service.read_media)
     service.auth = Auth(service.store)
     config = WhatsAppConfig.from_env()
     service.whatsapp = WhatsAppChannel(config, service) if config else None
@@ -120,6 +129,7 @@ class Api:
             ("POST", r"/api/pages/(PAGE-\d+)/retake", "any", lambda m, q, b, u: s.request_retake(
                 m[1], reviewer=u["username"], reason=b.get("reason"))),
             ("GET", r"/api/patients", "any", lambda m, q, b, u: s.list_patients()),
+            ("GET", r"/api/export/visits\.json", "admin", lambda m, q, b, u: s.export_visits()),
             ("GET", r"/api/patients/(PAT-\d+)/timeline", "any", lambda m, q, b, u: s.patient_timeline(m[1])),
         ]
 
@@ -200,6 +210,16 @@ def make_handler(api: Api, *, secure_cookies: bool = False):
                 user = api.auth.user_for(self._session_token())
                 status, payload = api.dispatch(method, url.path, parse_qs(url.query), body, user)
                 self._send_json(status, payload)
+            elif method == "GET" and url.path == "/export/visits.csv":
+                user = api.auth.user_for(self._session_token())
+                if user is None or user["role"] != "admin":
+                    self._send(HTTPStatus.FORBIDDEN, b"", "text/plain")
+                    return
+                buffer = io.StringIO()
+                writer = csv.DictWriter(buffer, fieldnames=api.service.EXPORT_COLUMNS)
+                writer.writeheader()
+                writer.writerows(api.service.export_visits())
+                self._send(HTTPStatus.OK, buffer.getvalue().encode("utf-8"), "text/csv; charset=utf-8")
             elif method == "GET" and url.path.startswith("/media/"):
                 if api.auth.user_for(self._session_token()) is None:
                     self._send(HTTPStatus.UNAUTHORIZED, b"", "text/plain")
@@ -342,13 +362,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db", default=str(REPO_ROOT / "var" / "dayone.sqlite3"))
     parser.add_argument("--window", type=int, default=8, help="multipage grouping window in seconds")
-    parser.add_argument("--extractor", choices=("fixture", "tesseract", "paddleocr"), default="fixture",
+    parser.add_argument("--extractor", choices=("fixture", "tesseract", "paddleocr", "http"), default="fixture",
                         help="fixture for the stable demo; tesseract for local OCR of the specimen pages; "
-                             "paddleocr for the slower PaddleOCR comparison")
+                             "paddleocr for the slower PaddleOCR comparison; http for an external model service")
     parser.add_argument("--tls-cert", help="PEM certificate: serve HTTPS (with --tls-key)")
     parser.add_argument("--tls-key", help="PEM private key for --tls-cert")
     parser.add_argument("--add-user", metavar="NAME", help="create a back-office account, then exit")
     parser.add_argument("--role", choices=("reviewer", "admin"), default="reviewer", help="role for --add-user")
+    parser.add_argument("--purge-media", type=int, metavar="DAYS",
+                        help="delete uploaded photos of documents synced more than DAYS ago, then exit")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -357,6 +379,10 @@ def main(argv: list[str] | None = None) -> None:
         import getpass
         user = service.auth.create_user(args.add_user, getpass.getpass(f"Mot de passe pour {args.add_user} : "), args.role)
         print(f"Compte créé : {user['username']} ({user['role']})")
+        service.store.close()
+        return
+    if args.purge_media is not None:
+        print(f"{service.purge_media(args.purge_media)} photo(s) supprimée(s).")
         service.store.close()
         return
     password = service.auth.ensure_admin()

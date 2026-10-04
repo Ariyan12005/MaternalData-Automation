@@ -73,6 +73,13 @@ class MediaStore:
         blob = path.read_bytes()
         return self.cipher.decrypt(blob, ref.encode()) if self.cipher else blob
 
+    def delete(self, ref: str) -> bool:
+        path = self._path(ref)
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
     @staticmethod
     def is_upload(ref: object) -> bool:
         return isinstance(ref, str) and _REF.fullmatch(ref) is not None
