@@ -24,6 +24,7 @@ from tests.test_flow import REPO_ROOT, FlowTestCase
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 PAGE = 3  # development split: patient 1's pregnancy grid
+OCR_ENV = {"DAYONE_OCR_CPU_THREADS": "2"}  # the lowest allowed: the tests share the machine with running servers
 
 
 def _skip_reason() -> str | None:
@@ -36,8 +37,8 @@ def _skip_reason() -> str | None:
 
 
 def _pool(**kwargs) -> ocr_process.OcrProcessPool:
-    spec = ocr_process.EngineSpec("dayone.ocr_engines:create_engine", {"choice": "paddle", "environ": {}})
-    return ocr_process.OcrProcessPool(spec, temp_root=Path(tempfile.gettempdir()) / "dayone-ocr-test-pool", **kwargs)
+    spec = ocr_process.EngineSpec("dayone.ocr_engines:create_engine", {"choice": "paddle", "environ": OCR_ENV})
+    return ocr_process.OcrProcessPool(spec, workers=1, temp_root=Path(tempfile.gettempdir()) / "dayone-ocr-test-pool", **kwargs)
 
 
 @unittest.skipIf(_skip_reason(), _skip_reason())
@@ -50,7 +51,7 @@ class RealOcrTest(FlowTestCase):
                      if p["page"] == PAGE)
         pool = _pool()
         self.addCleanup(pool.close)
-        self.service.extractor = LiveOcrAdapter(self.service.resolve_media, ocr_engines.create_engine("paddle"),
+        self.service.extractor = LiveOcrAdapter(self.service.resolve_media, ocr_engines.create_engine("paddle", environ=OCR_ENV),
                                                 reader=pool, document_timeout=600)
         document_id = self.send(ocr_specimen_eval.page_png(PAGE).relative_to(REPO_ROOT).as_posix())
         self.wait_for_draft()
