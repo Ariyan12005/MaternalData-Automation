@@ -7,7 +7,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-TABLES = ("jobs", "capture_groups", "events", "messages", "visits", "patients", "pages", "documents", "settings", "counters", "senders", "facilities")
+TABLES = ("jobs", "capture_groups", "whatsapp_outbound", "whatsapp_inbound", "events", "messages", "visits", "patients", "retake_requests", "pages", "documents", "settings", "counters", "senders", "facilities")
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS capture_groups (
@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS facilities (
 CREATE TABLE IF NOT EXISTS senders (
     sender_id TEXT PRIMARY KEY,
     facility_id TEXT NOT NULL REFERENCES facilities(facility_id),
-    label TEXT NOT NULL
+    label TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'SIMULATOR' CHECK (channel IN ('SIMULATOR', 'WHATSAPP'))
 );
 CREATE TABLE IF NOT EXISTS counters (
     name TEXT PRIMARY KEY,
@@ -60,8 +61,26 @@ CREATE TABLE IF NOT EXISTS pages (
     media_ref TEXT NOT NULL,
     media_sha256 TEXT NOT NULL,
     position INTEGER NOT NULL,
-    received_at TEXT NOT NULL
+    received_at TEXT NOT NULL,
+    replaced_by TEXT
 );
+CREATE TABLE IF NOT EXISTS retake_requests (
+    request_id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES documents(document_id),
+    page_id TEXT NOT NULL REFERENCES pages(page_id),
+    sender_id TEXT NOT NULL REFERENCES senders(sender_id),
+    facility_id TEXT NOT NULL REFERENCES facilities(facility_id),
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'FULFILLED', 'CANCELLED')),
+    requested_by TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    request_message_id INTEGER,
+    replacement_page_id TEXT REFERENCES pages(page_id),
+    replacement_message_id TEXT,
+    closed_by TEXT,
+    closed_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS retake_one_pending_per_page
+    ON retake_requests(page_id) WHERE status = 'PENDING';
 CREATE TABLE IF NOT EXISTS patients (
     patient_id TEXT PRIMARY KEY,
     facility_id TEXT NOT NULL REFERENCES facilities(facility_id),
@@ -105,6 +124,43 @@ CREATE TABLE IF NOT EXISTS events (
     at TEXT NOT NULL,
     detail_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS whatsapp_inbound (
+    inbound_id TEXT PRIMARY KEY,
+    wa_message_id TEXT NOT NULL UNIQUE,
+    message_type TEXT NOT NULL,
+    sender_id TEXT,
+    media_id TEXT,
+    mime_type TEXT,
+    media_sha256 TEXT,
+    context_message_id TEXT,
+    sent_at TEXT,
+    received_at TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'DONE', 'FAILED', 'IGNORED', 'REJECTED')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    last_error TEXT,
+    media_ref TEXT,
+    page_id TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS whatsapp_outbound (
+    message_id INTEGER PRIMARY KEY REFERENCES messages(id),
+    sender_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT NOT NULL,
+    wa_message_id TEXT UNIQUE,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+);
+-- Queued in the same transaction as the message, so the service needs no change and simulator senders are never sent to.
+CREATE TRIGGER IF NOT EXISTS whatsapp_outbound_enqueue AFTER INSERT ON messages
+WHEN NEW.direction = 'OUT'
+    AND EXISTS (SELECT 1 FROM senders WHERE sender_id = NEW.sender_id AND channel = 'WHATSAPP')
+BEGIN
+    INSERT INTO whatsapp_outbound(message_id, sender_id, status, next_attempt_at, updated_at)
+    VALUES (NEW.id, NEW.sender_id, 'PENDING', NEW.created_at, NEW.created_at);
+END;
 """
 
 
@@ -119,7 +175,17 @@ class Store:
         self._conn.execute("PRAGMA foreign_keys = ON")
         if self.path != ":memory:":
             self._conn.execute("PRAGMA journal_mode = WAL")
+        self._migrate()
         self._conn.executescript(SCHEMA_SQL)
+
+    def _migrate(self) -> None:
+        """Columns added after the first release; CREATE TABLE IF NOT EXISTS cannot add them to existing databases."""
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(pages)")}
+        if columns and "replaced_by" not in columns:
+            self._conn.execute("ALTER TABLE pages ADD COLUMN replaced_by TEXT")
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(senders)")}
+        if columns and "channel" not in columns:
+            self._conn.execute("ALTER TABLE senders ADD COLUMN channel TEXT NOT NULL DEFAULT 'SIMULATOR'")
 
     @contextmanager
     def tx(self):

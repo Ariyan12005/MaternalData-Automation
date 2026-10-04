@@ -166,9 +166,12 @@ class MongoAdapterTest(unittest.TestCase):
 
     def test_additive_schema_columns_preserve_encrypted_records(self):
         from dayone.store import SCHEMA_SQL
-        migrated_schema = SCHEMA_SQL.replace(
-            "label TEXT NOT NULL", "label TEXT NOT NULL, channel TEXT NOT NULL DEFAULT 'SIMULATOR'"
-        )
+        migrated_schema = SCHEMA_SQL
+        # Simulate payloads written before the transport added sender channels.
+        for item in self.client.database["senders"].items.values():
+            row = self.store.cipher.open(item["payload"])
+            row.pop("channel")
+            item["payload"] = self.store.cipher.seal(row)
         encrypted_before = copy.deepcopy(self.client.database["senders"].items)
         with patch("dayone.mongo_store.SCHEMA_SQL", migrated_schema):
             with self.store.read() as db:
