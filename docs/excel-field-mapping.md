@@ -1,6 +1,6 @@
 # Excel field mapping: contract proposal (DRAFT, not agreed)
 
-Status: **proposal.** Nothing here is implemented. Agree the open decisions (section 6) before extending `docs/schema.md` or `dayone/schema.py`.
+Status: **proposal.** Nothing here is implemented. (Note: the fiche photos `1-1` to `1-5` reviewed here have since been removed from the repository; the app now works on the specimen booklets only.) Agree the open decisions (section 6) before extending `docs/schema.md` or `dayone/schema.py`.
 Baseline: schema v1.0 on `main` (12 fields, layout `ma-fiche-surveillance-grossesse-v1`).
 Scope of this review: fiche pages `1-1` to `1-5` only. The ~125 `dossiers_specimen_*` images were **not** reviewed.
 

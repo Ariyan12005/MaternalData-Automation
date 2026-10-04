@@ -11,11 +11,11 @@
 
 ---
 
-## Current MVP (fixture-driven, runs today)
+## Current state (branch `p-ocr-camera`, runs today)
 
-`python -m dayone` starts the app at <http://127.0.0.1:8000>. Demo flow: photo, acknowledgment, draft, back-office correction, patient selection, confirmation, patient timeline. Tests: `python -m unittest discover -s tests -v` (24 tests).
+`python3 -m dayone` starts the app at <http://127.0.0.1:8000> (sign in with the admin password printed at first start). Demo flow: photo (dataset page or camera), acknowledgment, draft, back-office correction, patient selection, confirmation, patient timeline, central-registry sync; plus offline capture, retake and manual entry. Tests: `python3 -m unittest discover -s tests -v` (80 tests).
 
-The WhatsApp side is a **simulator**: a phone panel in the browser posts JSON to `/api/whatsapp/messages`. There is no Meta Cloud API integration yet. The extractor is a **fixture lookup**, not a model.
+The WhatsApp side is a **simulator** in the browser; a Cloud API adapter (`dayone/whatsapp.py`) is built and tested against a fake Graph API but not connected to a live Meta account. Extraction is either the fixture lookup or local **Tesseract OCR of the specimen booklets** (`--extractor tesseract`, only `data/Paper Registry/dossiers_specimen_*`).
 
 | Owner | MVP scope | Acceptance | State |
 |-------|-----------|------------|-------|
@@ -39,14 +39,14 @@ The WhatsApp side is a **simulator**: a phone panel in the browser posts JSON to
 |---|-----|----------------|-------|-------|
 | 1 | **Organizer confirmation in writing:** back-office verification instead of the midwife | Instructions say "verified by the midwife"; 20-pt rubric item at risk | All | Not obtained (verbal only) |
 | 2 | **Organizer confirmation in writing:** WhatsApp's outbox counts as the phone-side offline queue | Instructions require encrypted local storage and an offline-capture demo | All | Not obtained |
-| 3 | **Encryption at rest**: SQLite database (drafts, visits, keys) and any stored media | "Local storage on the device must be encrypted" (consignes §4) | Ariyan | Not implemented: database is plain SQLite in `var/` |
-| 4 | **Authentication and roles** on every `/api/*` route | Anyone who can reach the port can review, confirm, read timelines, or call `POST /api/demo/reset` (wipes the database). Reviewer identity is a free-text `X-Reviewer` header | Ariyan + Aymane | Not implemented; server binds to `127.0.0.1` by default |
-| 5 | **Offline-capture demo** ("an offline capture, the return of connectivity") | Required demo scenario | Ariyan + Aymane | Not demonstrated. We only show the platform-side equivalent (AI outage, then recovery) |
-| 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan | Reserved, not implemented |
-| 7 | **Retake photo** | Rubric item (Confirm / Edit / **Retake**) | Aymane | Not implemented |
-| 8 | **Real extractor** | 30-pt extraction criterion | Fatma | Not started; `FixtureExtractor` only covers 2 page sets |
-| 9 | **Real WhatsApp integration** | Bonus item; needed for a real pilot | Aymane | Not started (simulator only) |
-| 10 | **HTTPS** | Transport security | Ariyan | Not implemented (plain HTTP on localhost) |
+| 3 | **Encryption at rest**: database, stored media | "Local storage on the device must be encrypted" (consignes §4) | Ariyan | **Done** (AES-256-GCM): `dayone/crypto.py`, `store.py`, `media.py`; `tests/test_media_retake.py` (`EncryptionTest`). Key next to the data unless `DAYONE_DATA_KEY` is set; no key rotation |
+| 4 | **Authentication and roles** on every `/api/*` route | Reviewer identity and destructive routes | Ariyan + Aymane | **Done**: `dayone/auth.py`, `server.py` (sessions, roles, CSRF header); `tests/test_http.py` |
+| 5 | **Offline-capture demo** ("an offline capture, the return of connectivity") | Required demo scenario | Ariyan + Aymane | **Done as simulation**: encrypted IndexedDB outbox on the simulated phone (`static/app.js`), checked in a browser; capture time kept (`test_capture_time_is_kept_and_validated`) |
+| 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan | **Done**: `dayone/sync.py`, `SYNCED` / `SYNC_FAILED` with back-off; `tests/test_sync.py`. No real central registry exists; an encrypted local file stands in |
+| 7 | **Retake photo** | Rubric item (Confirm / Edit / **Retake**) | Aymane | **Done**: reviewer or automatic request, page replaced by the next photo; `RetakeTest` |
+| 8 | **Real extractor** | 30-pt extraction criterion | Fatma | **Done for the specimen booklets**: `dayone/live_ocr.py`, `specimen_ocr.py`; 0 FALSE-KNOWN, 33 % of written values KNOWN on 10 patients (`eval/compare_ocr.py`). Ground truth unverified |
+| 9 | **Real WhatsApp integration** | Bonus item; needed for a real pilot | Aymane | **Adapter built, not live**: `dayone/whatsapp.py`, `tests/test_whatsapp.py` (fake Graph API). Needs a Meta app, number and public HTTPS |
+| 10 | **HTTPS** | Transport security | Ariyan | **Option implemented**: `--tls-cert/--tls-key`, Secure cookies, HSTS. Not covered by a test |
 
 ---
 
@@ -54,12 +54,12 @@ The WhatsApp side is a **simulator**: a phone panel in the browser posts JSON to
 
 | Criterion | Points | Primary owner | Current state |
 |-----------|--------|---------------|---------------|
-| Extraction quality (field accuracy on test set) | 30 | **Fatma** | No real extractor and no metrics yet |
-| Uncertainty (status + confidence, agent shows doubt) | 20 | **Fatma** + **Aymane** | Contract, validator and UI done; confidence values come from fixtures |
-| Conversational review (Confirm / Edit / Retake, follow-ups, multipage) | 20 | **Aymane** + **Ariyan** | **At risk**: reviewer is staff, not the midwife; Retake missing |
-| Offline robustness (queue, states, sync after reconnect) | 15 | **Ariyan** (+ **Aymane**) | Platform queue durable; device-side offline and sync not done |
-| Patient linking + privacy (code-based link, no direct IDs stored) | 10 | **Ariyan** | Linking done; encryption and auth missing |
-| Code quality + README | 5 | **All** | README + tests done; no CI |
+| Extraction quality (field accuracy on test set) | 30 | **Fatma** | Tesseract extractor on 10 specimen patients: 120/369 values KNOWN and right, 0 FALSE-KNOWN, 0 missed; ground truth unverified, no held-out set |
+| Uncertainty (status + confidence, agent shows doubt) | 20 | **Fatma** + **Aymane** | Confidence = share of agreeing OCR readings; reason flags on every doubtful value; UI asks one question at a time |
+| Conversational review (Confirm / Edit / Retake, follow-ups, multipage) | 20 | **Aymane** + **Ariyan** | Confirm / Edit / Retake / manual entry done; **still at risk**: reviewer is staff, not the midwife |
+| Offline robustness (queue, states, sync after reconnect) | 15 | **Ariyan** (+ **Aymane**) | Durable encrypted queue, simulated encrypted phone outbox, `SYNCED` / `SYNC_FAILED` with retries |
+| Patient linking + privacy (code-based link, no direct IDs stored) | 10 | **Ariyan** | Linking, encryption at rest, login and roles, anonymized sync and export |
+| Code quality + README | 5 | **All** | README, 80 tests, CI workflow (not yet run on GitHub) |
 
 ---
 
@@ -128,7 +128,7 @@ Every path goes through the reviewer; there is no branch where a confident auto-
 
 ## Day 0 agreements
 
-- [x] **One document layout:** `ma-fiche-surveillance-grossesse-v1` (cover `1-1.jpg` + visit grids `1-4.jpg` / `1-5.jpg`), in `docs/schema.md` and `dayone/schema.py` (`LAYOUT_ID`).
+- [x] **One document layout:** `ma-fiche-surveillance-grossesse-v1`, as printed in the specimen booklets (page 1 cover, page 3 visit grid), in `docs/schema.md` and `dayone/schema.py` (`LAYOUT_ID`).
 - [x] **12-field contract** (below), in `dayone/schema.py` (`test_field_catalog_has_twelve_fields`).
 - [x] **Shared JSON schema:** `docs/schema.md` + `validate_draft` (`test_fixtures_follow_schema`).
 - [x] **Field status enum** (from consignes): `KNOWN`, `UNKNOWN`, `NOT_PROVIDED`, `ILLEGIBLE`, `NOT_APPLICABLE`, `NEEDS_REVIEW`. Kept separate from **verification** (`UNVERIFIED` / `CONFIRMED` / `CORRECTED`) with an append-only `corrections[]` (`test_photo_to_timeline` checks the correction history).
@@ -136,7 +136,7 @@ Every path goes through the reviewer; there is no branch where a confident auto-
 - [x] **Patient linking:** facility-scoped keys, suggestion only, `[Patiente N] [Nouvelle patiente] [Je ne sais pas]`, in `dayone/linking.py` (`test_unsure_parks_document`, `test_new_patient_with_registered_key_is_rejected`).
 - [x] **Verifier role decided:** back-office staff, a declared deviation from the instructions.
 - [ ] **Organizer confirmation in writing** for the verifier role and the WhatsApp outbox (blockers 1–2).
-- [ ] **Privacy.** Done: fiche-only input; the validator rejects any field outside the 12 (so no name or phone field can be stored); request logs contain paths only. Not done: PII detection in a real extractor, encryption at rest, authentication.
+- [x] **Privacy.** Fiche-only input; the validator rejects any field outside the 12; request logs contain paths only; OCR records PII labels as `NOT_EXTRACTED` (`RealSpecimenTest`); encryption at rest (`EncryptionTest`); login and roles (`tests/test_http.py`); sync and export carry no link keys (`test_registered_document_is_synced_with_an_anonymized_payload`, `test_export_has_values_but_no_link_keys`).
 - [x] **Offline strategy decided:** no companion app. Durable queue = platform database; phone-side buffering = WhatsApp outbox. The gaps are blockers 2, 3, 5 and 6.
 
 ### MVP field contract (agreed, 12 fields)
@@ -192,9 +192,9 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 |-------|------|-------|
 | **1. Contract & setup** | Shared schema, identity strategy, fixtures | Done: `docs/schema.md`, `docs/identity-strategy.md`, `fixtures/` |
 | **2. Core MVP** | Photo → draft → back-office review → **CONFIRMER** → visit on timeline | Done with fixtures and the simulator: `test_photo_to_timeline`, browser walkthrough |
-| **3. Reliability** | Corrections, duplicate webhooks, retries, restart | Partly done: idempotency, concurrency and restart tested. Bad-photo handling needs the real extractor |
-| **4. Challenge depth** | Real extractor, Retake, encryption, auth, offline-capture demo, real WhatsApp | Not started (blockers 3–10) |
-| **5. Submission** | README, architecture, extraction metrics, demo script | Partly done: README and demo script exist; no metrics |
+| **3. Reliability** | Corrections, duplicate webhooks, retries, restart | Done: idempotency, concurrency, restart, extraction crash, bad photo (automatic retake) tested |
+| **4. Challenge depth** | Real extractor, Retake, encryption, auth, offline-capture demo, real WhatsApp | Done except a live WhatsApp account (blocker 9) and organizer confirmations (1–2) |
+| **5. Submission** | README, architecture, extraction metrics, demo script | Done: README with metrics, architecture diagram and demo script; ground truth still to verify |
 
 ---
 
@@ -209,21 +209,26 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 ### Implemented
 
 - [x] Layout + 12-field map: `docs/schema.md`, `dayone/schema.py`.
-- [x] Success fixture (`fixtures/success_extraction.json`, `1-1.jpg` + `1-4.jpg`) and uncertain fixture (`fixtures/sample_extraction.json`, `1-1.jpg` + `1-5.jpg`, one `NEEDS_REVIEW` + one `ILLEGIBLE`): `test_sample_has_exactly_two_uncertain_fields`, `test_success_fixture_has_no_blocking_field`.
+- [x] Success fixture (`fixtures/success_extraction.json`, specimen pages 01 + 03) and uncertain fixture (`fixtures/sample_extraction.json`, pages 01–03, one `NEEDS_REVIEW` + one `ILLEGIBLE`): `test_sample_has_exactly_two_uncertain_fields`, `test_success_fixture_has_no_blocking_field`.
 - [x] Extractor interface wired to the queue: the worker calls `extract(page_refs)` on `PENDING_AI` documents and validates every result with `validate_draft`. An `ExtractionError` leads to `PROCESSING_FAILED`, while an unexpected exception leaves the document queued for retry (`dayone/service.py`, `process_document`).
 - [x] Contract guards against silent certainty: the validator rejects unverified `KNOWN` below 0.75 confidence, out-of-range `KNOWN` values, and values on missing statuses (`test_validator_rejects_silent_known_below_threshold`, `test_validator_rejects_value_on_missing_status`).
 
+### Done on `p-ocr-camera`
+
+- [x] Real extractor behind `extract(page_refs)`: Tesseract, specimen pages only, every visit column (`dayone/live_ocr.py`, `dayone/specimen_ocr.py`; `RealSpecimenTest`). Four readings must agree (3 of 4, none against) and pass booklet consistency checks before `KNOWN`.
+- [x] Plausibility handling: implausible or contradictory values become `NEEDS_REVIEW` with reason flags (`ConsistencyTest`); a contract-breaking draft fails as `INVALID_EXTRACTION` (`test_draft_breaking_the_contract_fails_explicitly`).
+- [x] PII detection: printed identifier labels recorded as `NOT_EXTRACTED` (`RealSpecimenTest`).
+- [x] Image-quality gate: unusable photo → automatic retake request, `MANUAL_REVIEW_REQUIRED` (`test_unusable_photo_triggers_an_automatic_retake_message`).
+- [x] Evaluation: `eval/compare_ocr.py` against `eval/ground_truth.json` (10 patients, 55 visits), in CI.
+- [x] Fixtures moved to specimen patient 1 (`fixtures/`), values from the ground truth.
+
 ### Open
 
-- [ ] Real extractor (OCR and/or vision model) behind the same `extract(page_refs)` interface, with its own `extractor` / `extractor_version`.
-- [ ] Preprocessing only where it helps (crop, deskew, contrast), tested on degraded PNGs.
-- [ ] Plausibility handling inside the extractor: emit `NEEDS_REVIEW` + `validation_flags` for implausible values. Today, a draft that breaks the contract is rejected outright as `INVALID_EXTRACTION`; this path has no test.
-- [ ] PII detection in the pipeline: today `pii_detected` is written by hand in the fixtures.
-- [ ] Reliable extraction of `registry_file_number` and `midwife_patient_code` from real images.
-- [ ] Image-quality gate (would use the reserved `MANUAL_REVIEW_REQUIRED` state, plus Retake).
-- [ ] More fixtures: partial page, PII-heavy page, other page sets. Only 2 page sets are covered; any other page set fails as `NO_FIXTURE_FOR_PAGE_SET`.
+- [ ] **Verify `eval/ground_truth.json` by a person** (transcribed by eye, unverified), and add a held-out set: the agreement thresholds were chosen on the same 10 patients.
+- [ ] Reliable `registry_file_number` and `facility_name`: handwriting goes to review in 9–10 of 10 booklets.
+- [ ] Preprocessing for real phone photos (deskew, perspective): only the fixed specimen scan is handled. Line removal inside cells is done.
+- [ ] Ticked boxes (facility type, blood group): `eval/mark_detection_demo.py` prototype only; needs schema fields and decision 4.
 - [ ] Field map beyond v1 (`docs/field-mapping.md` does not exist yet).
-- [ ] Replace illustrative fixture values with verified ground truth before computing accuracy.
 
 ### Handoff
 
@@ -231,10 +236,10 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 |-------------|-------|
 | Extractor interface (`extract(page_refs)` → draft) | Exists in-process (`dayone/extraction.py`); no HTTP endpoint |
 | Fixtures | 2 page sets; more needed |
-| Eval script + metrics | Not started |
-| Failure catalog (blur, empty checkbox, Arabic) | Not started |
+| Eval script + metrics | Done: `eval/compare_ocr.py`, table in README |
+| Failure catalog (blur, empty checkbox, Arabic) | Partly: per-field reason flags (`docs/schema.md`); no catalog of photo defects |
 
-**Done when:** uncertain or missing fields always arrive as `NEEDS_REVIEW` / `ILLEGIBLE` / `NOT_PROVIDED`, never as silent `KNOWN`, on real images.
+**Done when:** uncertain or missing fields always arrive as `NEEDS_REVIEW` / `ILLEGIBLE` / `NOT_PROVIDED`, never as silent `KNOWN`, on real images. Met on the 10 specimen booklets (0 FALSE-KNOWN, 0 missed); not tested on real phone photos.
 
 ---
 
@@ -254,14 +259,16 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 - [x] Multipage grouping by sender + window (`test_pages_after_window_start_a_new_document`).
 - [x] Midwives are never asked to confirm fields or choose patients (by design: no such message exists).
 
-### Real WhatsApp integration (not started)
+### Real WhatsApp integration (built, not live)
 
-- [ ] Meta Cloud API webhook: Meta payload format, verify token, signature check, HTTPS; secrets in environment variables.
-- [ ] Media download from the Graph API into encrypted storage. Today, ingest only accepts files already in `data/Paper Registry/` (`resolve_media`).
-- [ ] Send acknowledgments through the Cloud API. Today they are only stored in `messages`.
-- [ ] Handle non-image messages (ignore text, optional `fin` to close a session).
-- [ ] Sender registration (number → facility) instead of the seeded demo sender.
-- [ ] **Retake request:** reviewer button that sends the midwife *« Merci de reprendre la photo de la page N »* (blocker 7).
+- [x] Meta Cloud API webhook: verify token, `X-Hub-Signature-256` check, secrets in environment variables (`dayone/whatsapp.py`; `test_webhook_rejects_unsigned_calls`).
+- [x] Media download from the Graph API into encrypted storage (`test_image_is_downloaded_encrypted_and_ingested_once`).
+- [x] Acknowledgments and retake requests sent through the Cloud API with retries (`test_acknowledgments_are_sent_and_retried`).
+- [x] Non-image messages: polite reply; `fin` closes a session (`test_fin_closes_the_open_group_of_pages`).
+- [x] Sender registration (number → facility), admin only (`test_admin_registers_a_sender_and_a_user`).
+- [x] **Retake request** (blocker 7): *« Merci de reprendre la photo de la page N »*, next photo replaces the page (`RetakeTest`).
+- [x] Camera capture on the simulated phone (`POST /api/media`; `test_camera_photo_is_ingested_like_any_page`).
+- [ ] Connect a live Meta app and business number (needs public HTTPS).
 
 ### Back-office review (implemented)
 
@@ -274,10 +281,13 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 - [x] Manual entry after a failed extraction, for one encounter (`test_manual_entry_after_failed_extraction`).
 - [x] "IA disponible" toggle to simulate an AI outage.
 
+### Back-office, done on `p-ocr-camera`
+
+- [x] Manual entry while AI is unavailable, and with several visits (`test_manual_entry_while_ai_is_down_with_several_visits`).
+- [x] Reviewer login and roles (`tests/test_http.py`).
+
 ### Open (back-office)
 
-- [ ] Manual entry while AI is unavailable (today only after `PROCESSING_FAILED`), and for more than one encounter.
-- [ ] Reviewer login. Today the reviewer name is free text sent as `X-Reviewer` (blocker 4).
 - [ ] Optional: notify the facility when review is complete (not via the midwife chat).
 
 ### Example dialogues (French, as implemented)
@@ -286,15 +296,15 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 
 | Speaker | Message |
 |---------|---------|
-| Sage-femme | *[Photo 1-1.jpg]* |
+| Sage-femme | *[Photo dossiers_specimen_10_patientes-01.png]* |
 | Bot | Reçu : page 1. Merci, le traitement est en cours. |
 
 **Back-office**
 
 | Speaker | Message |
 |---------|---------|
-| Système | Date de visite — 9e mois. J'ai lu « 1?/12/25 », soit 12/12/2025. Confiance : 42 %. |
-| Agent | Corriger : 19/12/2025 |
+| Système | Date de visite — 9e mois. J'ai lu « 1?/01/2026 », soit 13/01/2026. Confiance : 42 %. |
+| Agent | Corriger : 18/01/2026 |
 | Système | Quelle patiente ? Patiente 1 : PAT-000001 (proposée) |
 | Agent | Patiente 1 : PAT-000001 → CONFIRMER l'enregistrement |
 | Système | Enregistré : VIS-000004, VIS-000005, VIS-000006 créées. |
@@ -322,28 +332,33 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 - [x] Re-digitization: same booklet → `EXISTS_SAME` / `EXISTS_DIFFERENT` (`test_rephotographed_booklet_creates_no_new_visit`).
 - [x] No PHI in HTTP logs: request logs contain the path only, never query strings or bodies (`Handler.log_request`).
 
+### Done on `p-ocr-camera`
+
+- [x] **Encryption at rest** for the database and stored media; key from `DAYONE_DATA_KEY` (`EncryptionTest`).
+- [x] **Authentication and roles** on all `/api/*` routes and `/media/` (`tests/test_http.py`).
+- [x] **HTTPS** option (`--tls-cert`, `--tls-key`); not covered by a test.
+- [x] Media storage for photos: encrypted, linked to page and capture time, session-only download (`dayone/media.py`).
+- [x] `SYNCED` / `SYNC_FAILED` with exponential back-off (`tests/test_sync.py`).
+- [x] HTTP API for an external extractor (`HttpExtractor`, `tests/test_export_extractor.py`).
+- [x] Retention: no temporary files (photos decrypted in memory, sent to Tesseract on stdin); `--purge-media DAYS` (`test_synced_camera_photos_are_purged_after_the_retention_period`).
+- [x] Test for a crash during extraction (`test_crash_during_extraction_keeps_the_document_queued`).
+- [x] Anonymized JSON/CSV export (`test_export_has_values_but_no_link_keys`).
+
 ### Open
 
-- [ ] **Encryption at rest** for the database and stored media, with keys from environment variables (blocker 3).
-- [ ] **Authentication and roles** on all `/api/*` routes, including `POST /api/demo/reset` and `/media/` (blocker 4).
-- [ ] **HTTPS** (blocker 10).
-- [ ] Media storage for real WhatsApp images: encrypted copy, linked to page and capture time, role-restricted download.
-- [ ] `SYNCED` / central sync worker, plus `SYNC_FAILED` (blocker 6).
 - [ ] Notification job after registration.
-- [ ] HTTP API for an external extractor (only the in-process interface exists).
-- [ ] Retention policy for temporary files.
-- [ ] Test for a crash during extraction (the code keeps the document in `PENDING_AI` and retries; no test yet).
-- [ ] Export of anonymized JSON/CSV for a dashboard (optional bonus).
+- [ ] Key rotation, and keeping the data key outside `var/` in deployment.
 
 ### Offline / recovery matrix
 
 | Situation | Expected behavior | Evidence |
 |-----------|-------------------|----------|
-| Phone offline | WhatsApp's outbox holds the photos and delivers them on reconnect; replays deduplicated | **Not demonstrated**; outbox is not our code (blockers 2, 5) |
+| Phone offline | Simulated phone: encrypted IndexedDB outbox, sent in capture order on reconnect; real WhatsApp: its own outbox | Browser walkthrough; replays deduplicated (`test_webhook_replay_is_ignored`) |
 | WhatsApp cloud unreachable | Inbound delayed; processed when delivered | Not applicable until real integration |
 | AI unavailable | Documents stay `PENDING_AI` ("IA indisponible" shown); processed when it returns | `test_queue_waits_while_ai_unavailable_and_survives_restart`, UI toggle |
 | Backend restart | Queue and drafts intact | Same test |
-| Crash during extraction | Document stays `PENDING_AI`, retried on the next tick | Code only (`process_document`); no test |
+| Crash during extraction | Document stays `PENDING_AI`, retried on the next tick | `test_crash_during_extraction_keeps_the_document_queued` |
+| Central registry down | `SYNC_FAILED`, retried with back-off, `SYNCED` on recovery | `test_failure_is_retried_with_backoff_then_recovers` |
 | Duplicate webhook | One page, no second acknowledgment | `test_webhook_replay_is_ignored` |
 | Confirm retried | Stored result returned, no new visit | `test_confirm_retry_saves_visits_once` |
 
@@ -352,18 +367,18 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 ## Shared integration tasks
 
 - [x] Repo layout for the MVP: one standard-library package `dayone/`; splitting into services is deferred.
-- [ ] CI: run `python -m unittest` and `git diff --check` on every push.
+- [x] CI: tests, `git diff --check` and the OCR evaluation on every push (`.github/workflows/ci.yml`; not yet run on GitHub).
 - [x] README: run, test, demo steps, code map, known limitations (`README.md`).
-- [ ] README: architecture diagram (currently only in this file) and environment variables (none exist yet).
-- [x] Demo script in `README.md`. It does not yet cover the required "offline capture → return of connectivity" scenario (blocker 5).
+- [x] README: architecture diagram and environment variables.
+- [x] Demo script in `README.md`, including offline capture → return of connectivity, retake and sync.
 
 ---
 
 ## Evaluation prep (Fatma leads, all contribute)
 
-- [ ] Hold-out image set with verified ground truth (10+ pages).
-- [ ] Table: field accuracy, status correctness, confidence calibration, false `KNOWN` rate.
-- [ ] Extraction limitations in the README (Arabic handwriting, checkboxes, etc.).
+- [ ] Hold-out image set with **verified** ground truth. 10 patients (80 pages) are transcribed in `eval/ground_truth.json` but not verified, and they were also used to choose the thresholds.
+- [x] Table: per-field KNOWN-right, FALSE-KNOWN, review, missed (README; `eval/compare_ocr.py --markdown`). Confidence calibration not measured.
+- [x] Extraction limitations in the README.
 
 ---
 
@@ -373,7 +388,7 @@ Internal IDs (`DOC-`, `PAGE-`, `PAT-`, `VIS-000001`) are generated sequentially 
 |-------|-----|
 | `consignes-fr-en.pdf` | Full rules, statuses, lifecycle, grading (**source of truth**) |
 | `Extra Info CodeML Hackathon.docx` | Two-layer offline/online design, V1 scope, workflow Q&A |
-| `data/Paper Registry/*` | Specimen images + `dossiers_specimen_10_patientes.pdf` (10 patients); `1-1.jpg`…`1-5.jpg` sample fiche. The app only reads these files |
+| `data/Paper Registry/*` | Specimen images + `dossiers_specimen_10_patientes.pdf` (10 patients × 8 pages). The sample fiche photos `1-1.jpg`…`1-5.jpg` were removed on `p-ocr-camera`. The app only reads these files |
 | `data/maternal_registry_synthetic.csv` | Ground-truth-style table, **200 rows** (+ header) |
 | `data/maternal_registry_synthetic.xlsx` | Same dataset as CSV (keep both read-only) |
 | `manifest.json` | **132** listed files with SHA-256; do not modify listed assets |

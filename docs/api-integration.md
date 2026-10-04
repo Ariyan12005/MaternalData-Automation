@@ -1,163 +1,116 @@
-# Current local PaddleOCR API contract (branch pinar)
+# API integration (branch `p-ocr-camera`)
 
-Base URL: `http://127.0.0.1:8001/api`. This is a local development address,
-not a published or remotely accessible service. No public URL has been deployed.
-Start with:
+Local development server only; nothing is deployed. Start it with one of:
 
 ```sh
-source .venv-paddle312/bin/activate
-python -m dayone --extractor paddleocr --port 8001 --db var/dayone-paddleocr.sqlite3
+python3 -m dayone                                   # fixture extraction, demo seed
+python3 -m dayone --extractor tesseract --port 8001 # local OCR of the specimen pages (starts with an empty demo)
+python3 -m dayone --extractor http                  # external model service (DAYONE_EXTRACTOR_URL)
 ```
 
-Important: the current server resets this demo database on PaddleOCR startup.
-Do not use it as a production persistence service.
+The first start prints a one-time password for the `admin` account. Create named accounts with
+`python3 -m dayone --add-user amina --role reviewer`.
 
-## Integration flow
+## Authentication
 
-1. `GET /api/system`: verify `extractor: "paddleocr"`; returns field catalog,
-   `ai_available`, and `grouping_window_seconds` (default 8).
-2. `GET /api/senders`: obtain a registered demo `sender_id`.
-3. `GET /api/media`: obtain existing repository media references. For OCR use
-   only `dossiers_specimen_10_patientes-01.png` through `-06.png`.
-4. `POST /api/whatsapp/messages`, JSON body:
-
-```json
-{
-  "sender_id": "whatsapp:+212600000001",
-  "message_id": "unique-integration-message-id",
-  "media_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png"
-}
-```
-
-The sender above is simulated demo metadata. Responses contain `page_id`,
-`document_id`, `position`, `duplicate`, and `acknowledgment`. Replaying a
-message ID is idempotent. Send all pages within the grouping window; processing
-begins after the last photo's window expires. This endpoint accepts existing
-media references, not multipart uploads, image bytes, or arbitrary image URLs.
-
-5. Poll `GET /api/documents/{document_id}`. The response contains `document`,
-   `next_step`, `pages`, `draft`, `review`, `registration`, `events`, and
-   `move_targets`. `draft` is null while pending or after extraction failure.
-6. Review via `POST /api/documents/{document_id}/fields` with `X-Reviewer` header,
-   `scope`, `field`, `encounter_index` for encounter fields, `action`
-   (`CONFIRM`, `CORRECT`, `SET_STATUS`), and the latest `expected_revision`.
-   Corrections supply `value`; status changes supply `field_status`.
-7. Select a patient via `POST /api/documents/{document_id}/patient`, then explicitly
-   confirm via `POST /api/documents/{document_id}/confirm`. Review and patient
-   selection alone do not save clinical visits. Both use `X-Reviewer` and the
-   latest `expected_revision`. See `docs/schema.md` for the stored draft schema.
-
-No authentication or CORS integration layer is implemented here; use a local
-same-origin integration or a controlled backend proxy for this prototype.
-
-## Actual extraction support
-
-Schema version `1.0`; layout `ma-fiche-surveillance-grossesse-v1`.
-`encounters[]` can represent multiple visits and fixtures do preserve them.
-**The current live PaddleOCR adapter returns one encounter only:** final `M9`
-column of the selected `-03.png` grid, or a blank `MANUAL` encounter for other
-page sets. Earlier visit columns are not extracted or preserved. Do not use
-this result to compute enrollment age or a mean across all page visits.
-A cover-only draft has a placeholder encounter requiring manual review, not
-an observed visit.
-
-`midwife_patient_code` exists in the schema but is **not extracted** by this
-adapter. It returns null / `NEEDS_REVIEW`. No fixture values are used in live OCR.
-Cover registry number recognition requires the label and digits in
-a single OCR detection. The selected cover now yields a registry number from
-PaddleOCR. Readings without that complete context require review. Facility
-and DDR still require manual review.
-
-| Scope | Field | Stored unit | Current selected-PNG OCR |
-|---|---|---|---|
-| document | registry_file_number | null | Labelled OCR detection required |
-| document | midwife_patient_code | null | Not extracted |
-| document | facility_name | null | Not extracted |
-| document | last_menstrual_period | null | Not extracted |
-| encounter | visit_date | null (ISO date string) | M9 date |
-| encounter | gestational_age_days | days | M9; OCR weeks normalized to days |
-| encounter | weight_kg | kg | M9 |
-| encounter | systolic_bp_mmhg | mmHg | M9 |
-| encounter | diastolic_bp_mmhg | mmHg | M9 |
-| encounter | fundal_height_cm | cm | M9 |
-| encounter | syphilis_test | null | Not extracted; requires review |
-| encounter | hiv_test | null | Not extracted; requires review |
-
-Each field has `raw_text`, `value`, `unit`, `confidence`, `field_status`,
-`validation_flags`, `source`, `verification`, and `corrections`.
-Confidence is PaddleOCR confidence normalized to [0,1], taking the minimum
-across cell tokens. It is not a calibrated clinical accuracy probability.
-Live `KNOWN` requires confidence >= 0.85, a complete reading, and deterministic
-format/range validation. `KNOWN` still has verification state `UNVERIFIED`.
-Current sources contain `page_ref` only; no bounding boxes, row, or column
-metadata is returned. The encounter's `slot: "M9"` identifies the visit column.
-
-Unread, invalid, low-confidence, missing, and potentially illegible OCR fields
-all return `value: null`, `raw_text: null`, `confidence: null`,
-`field_status: "NEEDS_REVIEW"`, flag `OCR_VALUE_UNCLEAR`, and a page reference.
-OCR does not reliably distinguish empty cells from illegible ones. A reviewer
-can explicitly choose `ILLEGIBLE`, `NOT_PROVIDED`, `UNKNOWN`, or
-`NOT_APPLICABLE`; none represents zero or a negative test. Required visit dates
-cannot be left missing before saving. Name, CIN, phone, address, and spouse
-name are not returned as field values or stored OCR text.
-
-## Example responses
-
-[Cover response](api-examples/cover-response.json) and
-[visit-grid response](api-examples/visit-grid-response.json) are complete
-`GET /api/documents/{id}` response examples, generated using actual local
-PaddleOCR reads of the selected PNGs through the API service. They are
-integration artifacts only; the extractor never reads these files.
-IDs, timestamps, revisions, and confidence can vary between runs.
-
-## Errors and queue behavior
-
-HTTP failures use this shape:
-
-```json
-{"error":{"code":"MEDIA_NOT_FOUND","message":"Image introuvable.","details":null}}
-```
-
-Typical HTTP statuses: 400 malformed JSON; 422 invalid field/input or missing
-reviewer; 403 unknown sender; 404 missing media/document/route; 409 stale
-revision or invalid workflow transition; 413 body too large; 500 unexpected
-API error (`INTERNAL`).
-
-Extraction is asynchronous: the ingest request can succeed even if OCR later
-fails. Polling the document still returns HTTP 200 with
-`document.status: "PROCESSING_FAILED"`, `draft: null`, and
-`document.failure_reason`, such as `RETAKE_REQUIRED`,
-`OCR_DEPENDENCY_MISSING`, or `INVALID_LIVE_OCR_DRAFT`. The status-change event
-contains the failure code/message. PaddleOCR model initialization failure returns `OCR_INITIALIZATION_FAILED`;
-inference failure returns `OCR_FAILED`; malformed output returns `OCR_INVALID_RESULT`.
-Unexpected extraction exceptions leave the document pending for retry; there
-is no retry limit. If `ai_available` is false, the local OCR queue pauses despite
-using no AI model. A failed draft can enter manual entry via the existing API.
-
-## Coverage against excel-field-mapping.md
-
-That file remains a proposal and predates the live PaddleOCR adapter. Schema
-v1.1, history fields, outcome fields, derived metadata, Excel aggregation,
-and the proposed exporter are not implemented.
-
-| Excel columns | Current live coverage |
+| Step | Request |
 |---|---|
-| 1 id | Backend patient ID is generated only through registration |
-| 14–15 mean BP | Per-visit BP supported for M9; means/export not implemented |
-| 19–20 HIV/syphilis | Schema fields present; selected-PNG OCR needs review |
-| 22 enrollment GA | M9 GA supported; earliest/enrollment GA not established |
-| 2–12 history/demographics | Not implemented |
-| 13 BMI; 16–18 hemoglobin/glucose/proteinuria | Not implemented |
-| 21 HCV; 23 gestational DM | Not implemented; no clinical inference |
-| 24–31 delivery/postpartum/newborn/referral | Not implemented |
+| Sign in | `POST /api/login` `{"username", "password"}` → user, and a `dayone_session` cookie (HttpOnly, SameSite=Strict, 12 h; Secure under HTTPS) |
+| Every `POST /api/*` | must send `X-Requested-With: dayone` (CSRF guard) |
+| Who am I | `GET /api/me` |
+| Sign out | `POST /api/logout` |
 
-Weight, fundal height, and visit date support integration of antenatal visit
-records but are not separate columns in the proposed 31-column Excel mapping.
-Start integration with these six observed M9 fields plus the review workflow;
-full Excel coverage and multi-column visit extraction remain incremental work.
+Without a session every `/api/*` route and `/media/*` answers `401 LOGIN_REQUIRED`; admin routes answer
+`403 ADMIN_ONLY` to reviewers. Five wrong passwords lock an account for five minutes (`429 LOCKED`).
+The reviewer recorded on reviews, confirmations and retakes is the signed-in user.
 
-PaddleOCR uses local PP-OCRv6 medium detection/recognition on CPU (no VLM).
-Python 3.12 is required by this project setup. First use may download model
-weights; subsequent inference uses cached weights locally. No photo is sent
-to cloud OCR. No Tesseract fallback exists. Model score thresholds are
-conservative screening rules, not a guarantee of correct recognition.
+## Routes
+
+| Method and path | Role | Purpose |
+|---|---|---|
+| `GET /api/system` | any | extractor, AI and central-registry switches, field catalog |
+| `POST /api/system/ai`, `POST /api/system/central` | admin | `{"available": bool}` demo switches |
+| `POST /api/demo/reset` | admin | wipe and reseed the demo (accounts are kept) |
+| `GET/POST /api/users` | admin | list / create accounts (`username`, `password` ≥ 10 chars, `role`) |
+| `GET /api/senders`, `GET /api/facilities` | any | registered WhatsApp numbers and facilities |
+| `POST /api/senders` | admin | `{"sender_id": "whatsapp:+212…", "label", "facility_id" or "facility_name"}` |
+| `GET /api/media` | any | dataset images (`data/Paper Registry/`) |
+| `POST /api/media` | any | raw JPEG/PNG body (≤ 12 MB) → `{"media_ref": "upload/<sha256>.jpg"}`, stored encrypted |
+| `POST /api/whatsapp/messages` | any | simulated inbound photo `{"sender_id", "message_id", "media_ref", "captured_at"?}` |
+| `GET /api/whatsapp/thread?sender_id=` | any | simulated thread, with `delivery_status` of outbound messages |
+| `GET /api/documents`, `GET /api/documents/{id}` | any | queue, and one document with draft, review, events |
+| `POST /api/documents/{id}/fields` | any | `CONFIRM` / `CORRECT` (`value`) / `SET_STATUS` (`field_status`), with `expected_revision` |
+| `POST /api/documents/{id}/patient` | any | `EXISTING` (`patient_id`) / `NEW` / `UNSURE` |
+| `POST /api/documents/{id}/confirm` | any | register; `existing_visit_decisions` for visits that differ |
+| `POST /api/documents/{id}/manual-entry` | any | after a failed extraction, or while the AI is down |
+| `POST /api/documents/{id}/encounters` | any | add a visit to a manual draft |
+| `POST /api/pages/{id}/move` | any | split (no target) or regroup (`target_document_id`) |
+| `POST /api/pages/{id}/retake` | any | ask the midwife for a new photo (`reason` optional) |
+| `GET /api/patients`, `GET /api/patients/{id}/timeline` | any | registry and timeline |
+| `GET /api/export/visits.json`, `GET /export/visits.csv` | admin | anonymized visits (internal IDs and values only) |
+| `GET /media/{media_ref}` | any | page image (uploads decrypted on the fly) |
+| `GET/POST /webhook/whatsapp` | Meta signature | WhatsApp Cloud API webhook (only when `WHATSAPP_APP_SECRET` is set) |
+
+`captured_at` is the phone's capture time (ISO with time zone, at most 30 days old, not in the future);
+offline captures keep it next to the server's `received_at`.
+
+## Flow
+
+1. Send the pages of one booklet with `POST /api/whatsapp/messages` within the grouping window (default 8 s),
+   or upload camera photos first with `POST /api/media`. A replayed `message_id` returns the same page
+   (`"duplicate": true`) and no second acknowledgment.
+2. Poll `GET /api/documents/{id}` until `next_step` is `FIELD`, `PATIENT`, `EXISTING_VISITS` or `CONFIRM`
+   (`WAITING_AI`, `WAITING_RETAKE` and `FAILED` mean wait, wait for the new photo, or start manual entry).
+3. Answer every item of `review.blocking`, select the patient, then confirm. Nothing is registered before
+   the explicit confirmation.
+4. After registration the worker delivers the anonymized visits to the central registry: status
+   `SYNCED`, or `SYNC_FAILED` with automatic retries (`document.sync_attempts`, `sync_next_attempt_at`).
+
+## What the Tesseract extractor returns
+
+Only `data/Paper Registry/dossiers_specimen_*` pages are read; anything else fails with
+`NOT_A_SPECIMEN_PAGE` (camera photos go to manual entry). See `docs/schema.md` for the field object and the
+flags, and the README for measured accuracy on the 10 specimen patients.
+
+| Field | Source | Notes |
+|---|---|---|
+| `registry_file_number`, `facility_name` | page 1, beside the printed label | handwriting: mostly review |
+| `last_menstrual_period` | page 3, *DDR* | `KNOWN` only when the visits' dates and ages confirm it |
+| `midwife_patient_code` | not on the specimen layout | always `NOT_PROVIDED` (`NOT_ON_THIS_LAYOUT`) |
+| all 8 visit fields | page 3 grid, one encounter per written *Venue le* | blank / dash cells are `NOT_PROVIDED` |
+
+Examples: [patient 1, pages 01–03](api-examples/specimen-booklet-response.json) and
+[a camera photo that is not a specimen page](api-examples/camera-photo-failed-response.json), both real
+`GET /api/documents/{id}` responses from the Tesseract extractor (IDs, times and confidences vary).
+
+## External extractor contract (`--extractor http`)
+
+`POST $DAYONE_EXTRACTOR_URL` with `Authorization: Bearer $DAYONE_EXTRACTOR_TOKEN` and
+`{"pages": [{"page_ref", "image_base64"}]}`. Answer `200` with a draft (`docs/schema.md`) whose `pages`
+match the request, or `422` to refuse the pages. Drafts that break the schema fail as
+`INVALID_EXTRACTION`; network errors and other statuses leave the document queued and retried. Only send
+pages to a service where the data may legally go.
+
+## Central registry contract
+
+With `DAYONE_CENTRAL_URL`, the worker posts each registered document as JSON with headers
+`Idempotency-Key: <document_id>:<registered_at>` and `X-DayOne-Signature: sha256=<HMAC-SHA256 of the body
+with DAYONE_CENTRAL_SECRET>`. Answer `200` with a receipt (any JSON object); anything else is retried.
+Payload: `document_id`, `facility_id`, `patient_id`, `registered_at`, and `visits[]` with `visit_id`,
+`visit_date`, `slot`, and per field `value`, `field_status`, `verification`. No link keys, no raw OCR text.
+Without the URL, an encrypted local file (`var/central/registry.log`) stands in.
+
+## Errors
+
+```json
+{"error": {"code": "MEDIA_NOT_FOUND", "message": "Image introuvable.", "details": null}}
+```
+
+400 malformed JSON · 401 not signed in / bad credentials · 403 role, CSRF header or unknown sender ·
+404 missing resource · 409 stale revision or invalid transition · 413 body too large · 422 invalid input ·
+429 locked account · 500 `INTERNAL`.
+
+Extraction is asynchronous: ingest can succeed and extraction fail later (`document.status:
+"PROCESSING_FAILED"`, `failure_reason` such as `NOT_A_SPECIMEN_PAGE`, `SEVERAL_BOOKLETS`, `NO_VISIT_FOUND`,
+`OCR_DEPENDENCY_MISSING`, `INVALID_EXTRACTION`). An unusable photo (`RETAKE_REQUIRED`) sends a retake request
+automatically. Unexpected extractor exceptions leave the document queued for retry.
