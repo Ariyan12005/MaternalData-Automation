@@ -22,7 +22,7 @@
       </label>
       <fieldset class="demo-controls">
         <legend>Contrôles de démonstration</legend>
-        <label class="toggle"><input type="checkbox" id="ai-toggle" checked> IA disponible (simulée)</label>
+        <label class="toggle"><input type="checkbox" id="ai-toggle" checked> Extraction disponible (simulé)</label>
         <button id="reset-demo" type="button" class="ghost">Réinitialiser la démo</button>
       </fieldset>
     </div>
@@ -46,7 +46,7 @@
 
     <section class="panel timeline-panel" aria-labelledby="timeline-title">
       <div class="panel-head">
-        <h2 id="timeline-title">Suivi de la patiente <span class="saved-badge">Enregistré</span></h2>
+        <h2 id="timeline-title">Suivi de la patiente <span class="saved-badge">Enregistré en base</span></h2>
         <label class="field-label" for="patient-select">Patiente
           <select id="patient-select"></select>
         </label>
@@ -83,6 +83,14 @@
       </div>
     </aside>
   </main>
+
+  <dialog id="page-dialog" class="page-dialog" aria-labelledby="page-dialog-title">
+    <div class="dialog-head">
+      <h2 id="page-dialog-title">Page</h2>
+      <button id="page-dialog-close" type="button">Fermer</button>
+    </div>
+    <div id="page-dialog-body"></div>
+  </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script src="/app.js"></script>

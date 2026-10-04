@@ -1,6 +1,6 @@
 # Demo script (no Meta business verification needed)
 
-Parts A and B use only the browser simulator: nothing leaves the machine and no Meta account is involved. Part C is a separate, optional test that calls Meta's real media API while the inbound WhatsApp message is **simulated locally**. Keep the labels when presenting it:
+Parts A and B use only the browser simulator: nothing leaves the machine and no Meta account is involved. Part D (optional) is the same with local OCR instead of fixtures. Part C is a separate, optional test that calls Meta's real media API while the inbound WhatsApp message is **simulated locally**. Keep the labels when presenting it:
 
 | Label | Meaning |
 |-------|---------|
@@ -24,8 +24,8 @@ A separate `--db` keeps the demo away from the sandbox databases. **Réinitialis
 1. **Midwife, simulated phone:** select `1-1.jpg` then `1-5.jpg`, then press **Envoyer (2)**. Each page gets « Reçu : page N… », and a provisional document appears in the queue.
 2. Wait about 8 s, the grouping window. The fixture extractor returns a draft with 3 visits and 2 uncertain fields.
 3. **Back-office, Prochaine action:**
-   - Hauteur utérine (2e trimestre – visite 1) reads "2? cm". Click **Corriger** and enter `25`.
-   - The 9th-month visit date reads "1?/12/25" at 42 %. Click **Corriger** and enter `19/12/2025`.
+   - Hauteur utérine (2e trimestre – visite 1) is *Illisible, à vérifier*. Click **Saisir la valeur**, enter `25`, then **Valider la correction**.
+   - The 9th-month visit date reads « 1?/12/25 », with *Score de lecture 42 % (indicatif)*. Click **Corriger** and enter `19/12/2025`.
 4. **Patient:** `PAT-000001` is suggested because both keys match. Click **Choisir la patiente 1 : PAT-000001**. Nothing is saved yet.
 5. Click **Confirmer et enregistrer**. The timeline shows 6 visits, with the 3 new ones marked *dossier ouvert*.
 
@@ -34,8 +34,8 @@ A separate `--db` keeps the demo away from the sandbox databases. **Réinitialis
 This is the path every real photo takes today, because the fixture extractor knows only the sample page sets.
 
 1. **Simulated phone:** select `dossiers_specimen_10_patientes-01.png` and `dossiers_specimen_10_patientes-03.png`, then press **Envoyer (2)**. Sending both together keeps them in one document.
-2. After the grouping window, the document shows *Échec extraction*: *Aucune extraction disponible pour ce groupe de pages*. Click **Saisie manuelle**.
-3. Answer each question from page -03:
+2. After the grouping window, the queue shows *Échec de lecture* and the document says *Lecture impossible : choisir une solution*, with the reason *Aucune extraction disponible pour ce groupe de pages (prototype à fixtures)*. Click **Saisie manuelle**.
+3. Answer each question from pages -01 and -03 with **Saisir la valeur** (then **Valider la correction**) or **Non renseigné sur la fiche**. The values below are the checked ground truth for visit 2 of the first trimester (`eval/specimen-ground-truth.json`):
 
    | Field | Enter |
    |-------|-------|
@@ -46,12 +46,12 @@ This is the path every real photo takes today, because the fixture extractor kno
    | Date de visite | `20/07/2025` |
    | Âge gestationnel | `12SA+0j` |
    | Poids | `58.8` |
-   | TA systolique / TA diastolique | `109` / `74` |
+   | TA systolique / TA diastolique | `104` / `74` |
    | Hauteur utérine | **Non renseigné** |
    | Syphilis (TPHA/VDRL) / Sérologie VIH | `négatif` / `négatif` |
 
-4. The status becomes *Champs validés*. No existing patient matches, so click **Nouvelle patiente**.
-5. Click **Confirmer et enregistrer**. A new patient is created, with one antenatal visit dated 20/07/2025 in its timeline. Each field is marked *saisie manuelle*, and the history lists every answer with the reviewer's name.
+4. After the last answer, **Prochaine action** becomes *Choisir la patiente*: *Aucune patiente de cet établissement ne porte ces clés.* Click **Nouvelle patiente**.
+5. Read the summary, then click **Confirmer et enregistrer**. A new patient is created (*patiente PAT-00000N (créée)*), with one antenatal visit dated 20/07/2025 in its timeline. Each field is marked *saisie manuelle*, and the history lists every answer with the reviewer's name.
 
 Optional: **Rejouer le dernier webhook** is ignored as a duplicate. The retake demo is in the [README](../README.md#retake-demo).
 
@@ -88,3 +88,21 @@ Prerequisites:
 3. **LOCAL:** open `http://127.0.0.1:8010` and continue as in Part B, steps 2–5. Pages sent more than 8 s apart form two documents. Move the second page with **Déplacer…** before starting manual entry.
 
 Uploaded media stay with Meta for up to 30 days unless deleted. The tool was checked against the mocked Graph API (`tests/test_whatsapp_cloud.py`). The 2026-10-03 run recorded in [docs/whatsapp-cloud.md](./whatsapp-cloud.md#what-works-locally-and-what-still-needs-the-sandbox) made the same calls by hand, before the tool existed.
+
+## Part D (optional): local OCR → review → confirmation → timeline (SIMULATOR + LOCAL)
+
+Needs the OCR install from the [README](../README.md#optional-local-ocr-synthetic-specimen-layout). Specimen pages only; no page leaves the machine.
+
+```powershell
+.venv\Scripts\python -m dayone --extractor paddle --db var/demo-ocr.sqlite3 --port 8020   # http://127.0.0.1:8020
+```
+
+The server loads the OCR models at startup (a few seconds) and refuses to start if a model or package is missing.
+
+1. **Simulated phone:** select `dossiers_specimen_10_patientes-01.png` and `dossiers_specimen_10_patientes-03.png`, then press **Envoyer (2)**.
+2. After the grouping window, the document shows the reading progress (page N of M). About 30 s later it is *À vérifier*, with the patient's 6 visits read from the grid. In the live check, 8 values needed review, including the file number and facility (always confirmed by a person) and the midwife code, which is not on this cover (**Non renseigné sur la fiche**).
+3. **Prochaine action** shows each value with *Lu sur la photo*, an indicative score, and an orange box on the page and in the zoomed crop. Compare with the photo, then **Confirmer la valeur** or **Corriger**. The checked ground truth is in `eval/specimen-ground-truth.json` (patient 1).
+4. **Patient:** click **Nouvelle patiente**, as in Part B.
+5. **Read the whole summary against the page before Confirmer et enregistrer.** Values read as sure (`KNOWN`) were not asked about, and confirmation records them as confirmed by the reviewer.
+
+Say when presenting it: the pages are synthetic renders of a handwriting font, not real phone photos. On clean renders no wrong value was marked sure (0 of 667), but on simulated photos 8 of 979 were, with high scores; the score is indicative, not a probability ([ocr-evaluation.md](./ocr-evaluation.md)). Only the specimen layout is read, not the pink booklet.

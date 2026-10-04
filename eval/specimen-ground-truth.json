@@ -1,0 +1,6538 @@
+{
+ "version": 1,
+ "description": "Manually checked ground truth for the 80 rendered pages of the synthetic specimen (10 fictitious patients x 8 pages). See docs/ocr-evaluation.md.",
+ "source": "data/Paper Registry/dossiers_specimen_10_patientes.pdf and its PNG renders",
+ "registry_csv_used": false,
+ "splits": {
+  "development": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "held_out": [
+   6,
+   7,
+   8,
+   9,
+   10
+  ]
+ },
+ "key_hash": "sha256('dayone-gt-v1|<field>|<value>'), value as normalised by the schema; facility names lowercased without accents or spaces",
+ "states": {
+  "value": "written value",
+  "dash": "a dash (not provided)",
+  "blank": "nothing written",
+  "illegible": "written but unreadable by a person",
+  "choice": "checkbox result",
+  "not_on_layout": "the layout has no such field"
+ },
+ "corrections": [
+  {
+   "page": 18,
+   "kind": "extended",
+   "key": "patient/None",
+   "field": "education_level_text",
+   "state": "value",
+   "text": "Collège",
+   "accept": [
+    "Coll ge"
+   ],
+   "reason": "The handwriting font of this page has no accented letter: the render shows a gap where a person reads the accent. The text layer drops it too."
+  },
+  {
+   "page": 58,
+   "kind": "extended",
+   "key": "previous_deliveries/1",
+   "field": "previous_delivery_mode_text",
+   "state": "value",
+   "text": "Césarienne",
+   "accept": [
+    "C sarienne"
+   ],
+   "reason": "The handwriting font of this page has no accented letter: the render shows a gap where a person reads the accent. The text layer drops it too."
+  },
+  {
+   "page": 66,
+   "kind": "extended",
+   "key": "patient/None",
+   "field": "education_level_text",
+   "state": "value",
+   "text": "Collège",
+   "accept": [
+    "Coll ge"
+   ],
+   "reason": "The handwriting font of this page has no accented letter: the render shows a gap where a person reads the accent. The text layer drops it too."
+  },
+  {
+   "page": 67,
+   "kind": "labs",
+   "key": "M8",
+   "field": "albuminuria",
+   "state": "value",
+   "text": "Pos +",
+   "canonical": "POSITIVE",
+   "reason": "Written 'Pos +' (positive, written short with its sign). The schema parser accepts 'Pos' or '+' but not both together, so the text cannot be parsed; a person reads it as positive."
+  },
+  {
+   "page": 67,
+   "kind": "labs",
+   "key": "M9",
+   "field": "albuminuria",
+   "state": "value",
+   "text": "Pos +",
+   "canonical": "POSITIVE",
+   "reason": "Written 'Pos +' (positive, written short with its sign). The schema parser accepts 'Pos' or '+' but not both together, so the text cannot be parsed; a person reads it as positive."
+  }
+ ],
+ "pages": [
+  {
+   "page": 1,
+   "patient": 1,
+   "split": "development",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "dca150edf318139817f1e68885bb20cbb7190037e083e6879b8dcfdf0c38b7ad"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "4f41c5cf277cbc26f00d4a1e819c7b6e9f62169790a94f0bd6b02b4c910caf03"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 2,
+   "patient": 1,
+   "split": "development",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Lycée"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "31"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "12/11/2022"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 3,
+   "patient": 1,
+   "split": "development",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V2",
+    "T2_V2",
+    "T2_V3",
+    "M7",
+    "M8",
+    "M9"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "20/07/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "12 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "58.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "104/74"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "28/09/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "22 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "62.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "106/77"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "18"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "01/11/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "27 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "64.3"
+     },
+     "bp": {
+      "state": "value",
+      "text": "102/60"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "23"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "01/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "64.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "103/66"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "value",
+      "text": "29/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "35 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "66.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "115/63"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "31"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "value",
+      "text": "18/01/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "38 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "66.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "110/60"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "34"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.8 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.93 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.4 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "26/04/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "155 cm"
+    }
+   ]
+  },
+  {
+   "page": 4,
+   "patient": 1,
+   "split": "development",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "03/02/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "40 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "VAGINAL_NON_INSTRUMENTAL"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "34 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3587 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "F"
+    }
+   ]
+  },
+  {
+   "page": 5,
+   "patient": 1,
+   "split": "development",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 6,
+   "patient": 1,
+   "split": "development",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "10/02/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 7,
+   "patient": 1,
+   "split": "development",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 8,
+   "patient": 1,
+   "split": "development",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "18/03/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "value",
+     "text": "MIXED"
+    }
+   ]
+  },
+  {
+   "page": 9,
+   "patient": 2,
+   "split": "development",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "c11cfb6bc046cac919c38709607468c1b73c4f10a2c492157c9fafe6f9140eb4"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "f38e3503952366138566b31b30cebcef5d147e5972cc2f5ca728c2db676c5d63"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 10,
+   "patient": 2,
+   "split": "development",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Aucun"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "4"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "21"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "21/03/2018"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "28/07/2021"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "03/09/2022"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 11,
+   "patient": 2,
+   "split": "development",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V1",
+    "T1_V2",
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M7",
+    "M8"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "05/10/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "8 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "71.0"
+     },
+     "bp": {
+      "state": "value",
+      "text": "151/97"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "04/11/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "12 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "73.3"
+     },
+     "bp": {
+      "state": "value",
+      "text": "139/89"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "23/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "19 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "75.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "137/92"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "15"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "28/01/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "24 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "77.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "141/88"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "20"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "22/02/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "28 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "79.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "152/95"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "24"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "14/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "79.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "146/96"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "value",
+      "text": "13/04/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "35 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "80.6"
+     },
+     "bp": {
+      "state": "value",
+      "text": "150/88"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "31"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "13.2 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.8 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "12.5 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "11/08/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "160 cm"
+    }
+   ]
+  },
+  {
+   "page": 12,
+   "patient": 2,
+   "split": "development",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "23/05/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "40 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "CESAREAN_EMERGENCY"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "34 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3699 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "M"
+    }
+   ]
+  },
+  {
+   "page": 13,
+   "patient": 2,
+   "split": "development",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 14,
+   "patient": 2,
+   "split": "development",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "30/05/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 15,
+   "patient": 2,
+   "split": "development",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 16,
+   "patient": 2,
+   "split": "development",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "05/07/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 17,
+   "patient": 3,
+   "split": "development",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "a1f2342047c4007ebcd51bd38472b769c1cd2f94f8689c05d650764827d031f4"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "45af719f021a98bde8759a9b9266ee9232f02cc7ceebc70f12f267d51e3f5991"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 18,
+   "patient": 3,
+   "split": "development",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Collège",
+     "accept": [
+      "Coll ge"
+     ],
+     "correction": "The handwriting font of this page has no accented letter: the render shows a gap where a person reads the accent. The text layer drops it too."
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "2"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "23"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "12/03/2023"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 19,
+   "patient": 3,
+   "split": "development",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V1",
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M8",
+    "M9"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "05/06/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "8 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "51.6"
+     },
+     "bp": {
+      "state": "value",
+      "text": "104/78"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "06/08/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "17 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "55.6"
+     },
+     "bp": {
+      "state": "value",
+      "text": "118/74"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "13"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "06/09/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "22 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "56.5"
+     },
+     "bp": {
+      "state": "value",
+      "text": "120/62"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "18"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "11/10/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "27 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "59.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "115/62"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "23"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "value",
+      "text": "09/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "35 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "62.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "101/75"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "31"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "value",
+      "text": "27/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "38 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "63.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "118/62"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "34"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.7 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.88 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.6 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "07/04/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "152 cm"
+    }
+   ]
+  },
+  {
+   "page": 20,
+   "patient": 3,
+   "split": "development",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "23/01/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "41 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "VAGINAL_INSTRUMENTAL"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "36 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3624 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "F"
+    }
+   ]
+  },
+  {
+   "page": 21,
+   "patient": 3,
+   "split": "development",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 22,
+   "patient": 3,
+   "split": "development",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "30/01/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 23,
+   "patient": 3,
+   "split": "development",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 24,
+   "patient": 3,
+   "split": "development",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "08/03/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 25,
+   "patient": 4,
+   "split": "development",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "f4cbbf0f685af57c2da6d1f14a35f78408f26d249e5a692a652824d832160e5d"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "8816a8bbe4adacb1c67a7de0db5520466e095ff305b6aa04ce207fce7e374920"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 26,
+   "patient": 4,
+   "split": "development",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Aucun"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "5"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "4"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "26"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "4"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "25/01/2016"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "24/03/2019"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "11/02/2020"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 4,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "10/07/2023"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 4,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 27,
+   "patient": 4,
+   "split": "development",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V1",
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M7",
+    "M8"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "10/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "11 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "70.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "101/67"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "13/01/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "16 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "72.3"
+     },
+     "bp": {
+      "state": "value",
+      "text": "107/72"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "12"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "01/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "23 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "74.6"
+     },
+     "bp": {
+      "state": "value",
+      "text": "112/73"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "19"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "28/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "27 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "76.0"
+     },
+     "bp": {
+      "state": "value",
+      "text": "104/64"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "23"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "26/04/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "78.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "114/71"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "value",
+      "text": "23/05/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "35 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "79.5"
+     },
+     "bp": {
+      "state": "value",
+      "text": "101/73"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "31"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "12.1 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.9 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "12.3 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "21/09/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "158 cm"
+    }
+   ]
+  },
+  {
+   "page": 28,
+   "patient": 4,
+   "split": "development",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "28/06/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "40 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "CESAREAN_PLANNED"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "36 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "2967 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "M"
+    }
+   ]
+  },
+  {
+   "page": 29,
+   "patient": 4,
+   "split": "development",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 30,
+   "patient": 4,
+   "split": "development",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "05/07/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 31,
+   "patient": 4,
+   "split": "development",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 32,
+   "patient": 4,
+   "split": "development",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "13/08/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 33,
+   "patient": 5,
+   "split": "development",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "c6848a25153292f6e5e6802bbad9d186eefaeaa0321d1569453facb9edda2899"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "735c3d905e32e9c1008e26d7884114a7b19614b434f2d2286df172b39d32fd12"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 34,
+   "patient": 5,
+   "split": "development",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Collège"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "2"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "38"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "28/05/2023"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 35,
+   "patient": 5,
+   "split": "development",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M7",
+    "M9"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "15/11/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "16 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "54.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "109/60"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "12"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "26/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "22 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "57.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "117/60"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "18"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "07/02/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "28 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "59.6"
+     },
+     "bp": {
+      "state": "value",
+      "text": "101/65"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "24"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "26/02/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "60.0"
+     },
+     "bp": {
+      "state": "value",
+      "text": "114/64"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "value",
+      "text": "19/04/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "38 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "62.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "111/77"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "34"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "9.6 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.84 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "25/07/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "163 cm"
+    }
+   ]
+  },
+  {
+   "page": 36,
+   "patient": 5,
+   "split": "development",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "08/05/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "41 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "CESAREAN_PLANNED"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "35 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3765 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "F"
+    }
+   ]
+  },
+  {
+   "page": 37,
+   "patient": 5,
+   "split": "development",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 38,
+   "patient": 5,
+   "split": "development",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "16/05/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 39,
+   "patient": 5,
+   "split": "development",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 40,
+   "patient": 5,
+   "split": "development",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "25/06/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 41,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "0e5f74b2cde874bf420d746d0bd07248cb3237291aa50623980a934e38a68c41"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "7704666cefc87c1947a7699fd33ec64b87cbb6fdb464495270e578821516dcbe"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 42,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Supérieur"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "4"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "36"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "26/05/2018"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "14/11/2021"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "01/02/2023"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 43,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V1",
+    "T1_V2",
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M7"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "28/01/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "10 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "73.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "109/61"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "20/02/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "13 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "74.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "120/63"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "23/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "17 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "76.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "117/61"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "13"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "24/04/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "22 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "77.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "113/75"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "18"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "03/06/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "28 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "80.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "111/72"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "24"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "27/06/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "81.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "117/64"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.7 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.76 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "12.3 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "21/11/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "164 cm"
+    }
+   ]
+  },
+  {
+   "page": 44,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "26/07/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "35 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "VAGINAL_NON_INSTRUMENTAL"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "31 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "2350 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "F"
+    }
+   ]
+  },
+  {
+   "page": 45,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 46,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "03/08/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 47,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 48,
+   "patient": 6,
+   "split": "held_out",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "12/09/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 49,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "fdc9279339efff8ef03ecf192d02e97b4fe3a463442a8c78a31d797abef19b2e"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "8da401ad44320a521fd61f5207b8d40b631b09bbb6e573202047c8a36fff5732"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 50,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Collège"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "5"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "26"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "3"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "19/10/2018"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "12/08/2021"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 2,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "25/06/2023"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 3,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Voie basse"
+    }
+   ]
+  },
+  {
+   "page": 51,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T2_V1"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "18/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "16 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "63.4"
+     },
+     "bp": {
+      "state": "value",
+      "text": "100/61"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "12"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "12.3 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.91 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "23/11/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "169 cm"
+    }
+   ]
+  },
+  {
+   "page": 52,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "28/08/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "39 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "VAGINAL_NON_INSTRUMENTAL"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "35 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3430 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "F"
+    }
+   ]
+  },
+  {
+   "page": 53,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 54,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "04/09/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 55,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 56,
+   "patient": 7,
+   "split": "held_out",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "14/10/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "value",
+     "text": "MIXED"
+    }
+   ]
+  },
+  {
+   "page": 57,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "c0c9e2b2e67fcd7ec0992e219f7ab5f09e757e9c0046e30bc056170ad8456f84"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "9dfe7ffafbb3278c122fa7aaa9f663b6c45aee39e922f03be2329e77eccf7439"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 58,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Aucun"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "2"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "28"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_date",
+     "state": "value",
+     "text": "03/08/2022"
+    },
+    {
+     "section": "previous_deliveries",
+     "item": 1,
+     "field": "previous_delivery_mode_text",
+     "state": "value",
+     "text": "Césarienne",
+     "accept": [
+      "C sarienne"
+     ],
+     "correction": "The handwriting font of this page has no accented letter: the render shows a gap where a person reads the accent. The text layer drops it too."
+    }
+   ]
+  },
+  {
+   "page": 59,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V1",
+    "T1_V2",
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M7",
+    "M9"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "14/02/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "8 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "74.9"
+     },
+     "bp": {
+      "state": "value",
+      "text": "120/61"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "15/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "12 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "75.5"
+     },
+     "bp": {
+      "state": "value",
+      "text": "120/60"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "02/05/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "19 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "77.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "101/78"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "15"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "25/05/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "22 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "79.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "101/72"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "18"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "21/06/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "26 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "80.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "100/76"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "22"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "28/07/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "81.2"
+     },
+     "bp": {
+      "state": "value",
+      "text": "106/63"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "value",
+      "text": "17/09/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "38 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "85.3"
+     },
+     "bp": {
+      "state": "value",
+      "text": "108/72"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "34"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "10.1 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.76 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "9.5 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "22/12/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "167 cm"
+    }
+   ]
+  },
+  {
+   "page": 60,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "25/09/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "39 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "VAGINAL_NON_INSTRUMENTAL"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "35 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3492 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "M"
+    }
+   ]
+  },
+  {
+   "page": 61,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 62,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "02/10/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 63,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 64,
+   "patient": 8,
+   "split": "held_out",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "08/11/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 65,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "316bd98289dff8f88ba597a71bd7f3e62dfc60551bee265616476fb7c16116e0"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "8d42724c63970e0855afc422e94952c87bf70bb0319af4042a3d6d1476860de4"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 66,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Collège",
+     "accept": [
+      "Coll ge"
+     ],
+     "correction": "The handwriting font of this page has no accented letter: the render shows a gap where a person reads the accent. The text layer drops it too."
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "0"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "21"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "0"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    }
+   ]
+  },
+  {
+   "page": 67,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T2_V2",
+    "T2_V3",
+    "M7",
+    "M8",
+    "M9"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "22/09/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "23 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "74.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "138/89"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "19"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "11/10/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "26 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "75.0"
+     },
+     "bp": {
+      "state": "value",
+      "text": "149/95"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "22"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "value",
+      "text": "18/11/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "31 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "77.4"
+     },
+     "bp": {
+      "state": "value",
+      "text": "153/93"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "27"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "value",
+      "text": "16/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "35 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "78.0"
+     },
+     "bp": {
+      "state": "value",
+      "text": "157/102"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "31"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "value",
+      "text": "06/01/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "38 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "80.3"
+     },
+     "bp": {
+      "state": "value",
+      "text": "164/98"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "34"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "10.9 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.8 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Pos +",
+      "canonical": "POSITIVE",
+      "correction": "Written 'Pos +' (positive, written short with its sign). The schema parser accepts 'Pos' or '+' but not both together, so the text cannot be parsed; a person reads it as positive."
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Pos +",
+      "canonical": "POSITIVE",
+      "correction": "Written 'Pos +' (positive, written short with its sign). The schema parser accepts 'Pos' or '+' but not both together, so the text cannot be parsed; a person reads it as positive."
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "14/04/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "155 cm"
+    }
+   ]
+  },
+  {
+   "page": 68,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "30/01/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "41 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "CESAREAN_EMERGENCY"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "33 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3585 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "M"
+    }
+   ]
+  },
+  {
+   "page": 69,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 70,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "06/02/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 71,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 72,
+   "patient": 9,
+   "split": "held_out",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "17/03/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 73,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "cover",
+   "expected_section": "cover",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "keys": {
+    "registry_file_number": {
+     "state": "value",
+     "sha256": "20fa1afced70a0dcb53b2ab2964cd0ea8d11f0c3d938696db23c5661c988c93e"
+    },
+    "facility_name": {
+     "state": "value",
+     "sha256": "b6e2bef625c02c9149ce1fb7daf77c847006f599dff9871897ccfafa6523ea04"
+    },
+    "midwife_patient_code": {
+     "state": "not_on_layout"
+    }
+   }
+  },
+  {
+   "page": 74,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "identification",
+   "expected_section": "identification",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "patient",
+     "item": null,
+     "field": "education_level_text",
+     "state": "value",
+     "text": "Supérieur"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "abortions_count",
+     "state": "blank"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "consanguinity_mark",
+     "state": "choice",
+     "value": "UNMARKED"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "gravidity",
+     "state": "value",
+     "text": "1"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "living_children_count",
+     "state": "value",
+     "text": "0"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "maternal_age_years",
+     "state": "value",
+     "text": "34"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "parity",
+     "state": "value",
+     "text": "0"
+    },
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "pregnancy_desired_mark",
+     "state": "choice",
+     "value": "MARKED"
+    }
+   ]
+  },
+  {
+   "page": 75,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "current_pregnancy",
+   "expected_section": "current_pregnancy",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "visit_slots": [
+    "T1_V1",
+    "T1_V2",
+    "T2_V1",
+    "T2_V2",
+    "T2_V3",
+    "M8"
+   ],
+   "grid": {
+    "T1_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "30/11/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "8 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "72.9"
+     },
+     "bp": {
+      "state": "value",
+      "text": "103/78"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "value",
+      "text": "Neg"
+     },
+     "hiv_test": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "26/12/2025"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "12 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "74.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "120/64"
+     },
+     "fundal_height_cm": {
+      "state": "dash"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T1_V3": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "visit_date": {
+      "state": "value",
+      "text": "29/01/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "17 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "76.1"
+     },
+     "bp": {
+      "state": "value",
+      "text": "113/60"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "13"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V2": {
+     "visit_date": {
+      "state": "value",
+      "text": "21/03/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "24 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "77.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "111/70"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "20"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "T2_V3": {
+     "visit_date": {
+      "state": "value",
+      "text": "06/04/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "26 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "79.7"
+     },
+     "bp": {
+      "state": "value",
+      "text": "104/64"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "22"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M7": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "visit_date": {
+      "state": "value",
+      "text": "04/06/2026"
+     },
+     "gestational_age_days": {
+      "state": "value",
+      "text": "35 SA"
+     },
+     "weight_kg": {
+      "state": "value",
+      "text": "81.8"
+     },
+     "bp": {
+      "state": "value",
+      "text": "114/73"
+     },
+     "fundal_height_cm": {
+      "state": "value",
+      "text": "31"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    },
+    "M9": {
+     "visit_date": {
+      "state": "blank"
+     },
+     "gestational_age_days": {
+      "state": "blank"
+     },
+     "weight_kg": {
+      "state": "blank"
+     },
+     "bp": {
+      "state": "blank"
+     },
+     "fundal_height_cm": {
+      "state": "blank"
+     },
+     "syphilis_test": {
+      "state": "blank"
+     },
+     "hiv_test": {
+      "state": "blank"
+     }
+    }
+   },
+   "labs": {
+    "T1_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.8 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "value",
+      "text": "0.93 g/L"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T1_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "T2_V1": {
+     "hemoglobin_g_dl": {
+      "state": "value",
+      "text": "11.7 g/dL"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V2": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "T2_V3": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M7": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    },
+    "M8": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "value",
+      "text": "Neg"
+     }
+    },
+    "M9": {
+     "hemoglobin_g_dl": {
+      "state": "blank"
+     },
+     "blood_glucose_g_l": {
+      "state": "blank"
+     },
+     "albuminuria": {
+      "state": "blank"
+     }
+    }
+   },
+   "document_fields": {
+    "last_menstrual_period": {
+     "state": "value",
+     "text": "03/10/2025"
+    }
+   },
+   "extended": [
+    {
+     "section": "pregnancy",
+     "item": null,
+     "field": "height_cm",
+     "state": "value",
+     "text": "160 cm"
+    }
+   ]
+  },
+  {
+   "page": 76,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "delivery",
+   "expected_section": "delivery",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_date",
+     "state": "value",
+     "text": "07/07/2026"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_gestational_age_days",
+     "state": "value",
+     "text": "39 SA"
+    },
+    {
+     "section": "delivery",
+     "item": null,
+     "field": "delivery_mode",
+     "state": "choice",
+     "value": "CESAREAN_EMERGENCY"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_head_circumference_cm",
+     "state": "value",
+     "text": "35 cm"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "birth_weight_g",
+     "state": "value",
+     "text": "3119 g"
+    },
+    {
+     "section": "newborns",
+     "item": 1,
+     "field": "newborn_sex",
+     "state": "value",
+     "text": "F"
+    }
+   ]
+  },
+  {
+   "page": 77,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "postpartum_mother_early",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 78,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "newborn_early",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "15/07/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "EARLY",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  },
+  {
+   "page": 79,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "postpartum_mother_late",
+   "expected_section": "postpartum",
+   "supported": false,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   }
+  },
+  {
+   "page": 80,
+   "patient": 10,
+   "split": "held_out",
+   "layout": "newborn_late",
+   "expected_section": "newborn",
+   "supported": true,
+   "checked": {
+    "by": "AI coding assistant (Cursor agent), visual comparison of each candidate with a crop of the rendered page",
+    "on": "2026-10-04",
+    "human_spot_check": "pending"
+   },
+   "extended": [
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "consultation_date",
+     "state": "value",
+     "text": "20/08/2026"
+    },
+    {
+     "section": "newborn_consultations",
+     "item": "LATE",
+     "field": "feeding_mode",
+     "state": "choice",
+     "value": "EXCLUSIVE_BREASTFEEDING"
+    }
+   ]
+  }
+ ]
+}
