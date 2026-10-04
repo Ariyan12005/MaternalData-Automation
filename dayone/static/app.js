@@ -1,7 +1,7 @@
 "use strict";
 
 const REVIEWABLE = new Set(["AI_PROCESSED", "NEEDS_REVIEW", "VALIDATED", "PATIENT_MATCHED", "DUPLICATE_SUSPECTED"]);
-const SPECIMEN_PATIENT_ONE = /\/dossiers_specimen_10_patientes-(?:01|02|03|04|05|06)\.png$/;
+const SPECIMEN_PATIENT_ONE = /\/dossiers_specimen_10_patientes-0[1-8](?:__[^/]*)?\.png$/;
 
 const DOC_STATUS = {
   CAPTURED: "Réception des pages", PENDING_AI: "En attente IA", AI_PROCESSED: "Traité par l'IA",

@@ -20,7 +20,8 @@ MEDIA_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
 DEMO_FACILITY = {"facility_id": "FAC-SIDI-SMAIL", "name": "C/S Sidi Smail"}
 DEMO_SENDER = {"sender_id": "whatsapp:+212600000001", "label": "Sage-femme – C/S Sidi Smail"}
-DEMO_HISTORY_PAGES = ("data/Paper Registry/1-1.jpg", "data/Paper Registry/1-4.jpg")
+DEMO_HISTORY_PAGES = ("data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+                      "data/Paper Registry/dossiers_specimen_10_patientes-03.png")
 
 
 class ServiceError(Exception):
@@ -142,12 +143,8 @@ class DayOneService:
 
     def list_media(self) -> list[str]:
         def sort_key(path: Path):
-            specimen = re.fullmatch(r"dossiers_specimen_10_patientes-(0[1-6])\.png", path.name)
-            if specimen:
-                return (0, int(specimen.group(1)))
-            if re.fullmatch(r"1-\d+\.jpg", path.name):
-                return (1, path.name)
-            return (2, path.name)
+            specimen = re.match(r"dossiers_specimen_10_patientes-(\d+)", path.name)
+            return (0, int(specimen.group(1)), path.name) if specimen else (1, 0, path.name)
 
         files = [p for p in self.media_dir.iterdir() if p.is_file() and p.suffix.lower() in MEDIA_SUFFIXES]
         return [p.relative_to(self.repo_root).as_posix() for p in sorted(files, key=sort_key)]

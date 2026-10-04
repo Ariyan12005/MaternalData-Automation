@@ -8,9 +8,10 @@ from dayone.service import DEMO_SENDER, Conflict, DayOneService, Forbidden, Inva
 from dayone.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-COVER = "data/Paper Registry/1-1.jpg"
-T1_GRID = "data/Paper Registry/1-4.jpg"
-T2_T3_GRID = "data/Paper Registry/1-5.jpg"
+SPECIMEN = "data/Paper Registry/dossiers_specimen_10_patientes-{:02d}.png"
+COVER, IDENTIFICATION, GRID, DELIVERY = (SPECIMEN.format(n) for n in (1, 2, 3, 4))
+SAMPLE = (COVER, IDENTIFICATION, GRID)  # fixture: 6 visits, 2 uncertain fields
+HISTORY = (COVER, GRID)  # fixture: the 3 visits seeded as PAT-000001
 SENDER = DEMO_SENDER["sender_id"]
 REVIEWER = "agent.test"
 
@@ -32,7 +33,7 @@ class FlowTestCase(unittest.TestCase):
         self.db_path = Path(self.tmp.name) / "test.sqlite3"
         self.clock = Clock()
         self.service = self.make_service()
-        self.service.reset_demo()  # seeds PAT-000001 with the three first-trimester visits
+        self.service.reset_demo()  # seeds PAT-000001 with its first three visits
         self.message_number = 0
 
     def tearDown(self):
@@ -58,10 +59,10 @@ class FlowTestCase(unittest.TestCase):
         self.service.tick()
 
     def review_sample(self, document_id: str) -> dict:
-        self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=0,
-                                  field="fundal_height_cm", action="CONFIRM")
-        return self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=2,
-                                         field="visit_date", action="CORRECT", value="19/12/2025")
+        self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=4,
+                                  field="fundal_height_cm", action="CORRECT", value="31")
+        return self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=5,
+                                         field="visit_date", action="CORRECT", value="18/01/2026")
 
     def visit_count(self) -> int:
         with self.service.store.read() as db:
@@ -70,9 +71,9 @@ class FlowTestCase(unittest.TestCase):
 
 class EndToEndTest(FlowTestCase):
     def test_photo_to_timeline(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         thread = self.service.thread(SENDER)
-        self.assertEqual(thread[-1]["body"], "Reçu : page 2. Merci, le traitement est en cours.")
+        self.assertEqual(thread[-1]["body"], "Reçu : page 3. Merci, le traitement est en cours.")
         self.assertEqual(self.service.get_document(document_id)["document"]["status"], "CAPTURED")
 
         self.wait_for_draft()
@@ -86,10 +87,10 @@ class EndToEndTest(FlowTestCase):
         detail = self.review_sample(document_id)
         self.assertEqual(detail["document"]["status"], "VALIDATED")
         self.assertEqual(detail["next_step"], "PATIENT")
-        corrected = detail["draft"]["encounters"][2]["fields"]["visit_date"]
-        self.assertEqual(corrected["value"], "2025-12-19")
+        corrected = detail["draft"]["encounters"][5]["fields"]["visit_date"]
+        self.assertEqual(corrected["value"], "2026-01-18")
         self.assertEqual(corrected["verification"]["state"], "CORRECTED")
-        self.assertEqual(corrected["corrections"][0]["previous"]["value"], "2025-12-12")
+        self.assertEqual(corrected["corrections"][0]["previous"]["value"], "2026-01-13")
 
         with self.assertRaises(Conflict):
             self.service.confirm(document_id, reviewer=REVIEWER)
@@ -100,19 +101,19 @@ class EndToEndTest(FlowTestCase):
 
         result = self.service.confirm(document_id, reviewer=REVIEWER)
         self.assertEqual(result["patient_id"], "PAT-000001")
-        self.assertEqual([v["outcome"] for v in result["visits"]], ["CREATED"] * 3)
+        self.assertEqual([v["outcome"] for v in result["visits"]], ["UNCHANGED"] * 3 + ["CREATED"] * 3)
 
         timeline = self.service.patient_timeline("PAT-000001")
         self.assertEqual(
             [v["visit_date"] for v in timeline["visits"]],
-            ["2025-07-04", "2025-08-01", "2025-09-12", "2025-09-26", "2025-11-14", "2025-12-19"],
+            ["2025-07-20", "2025-09-28", "2025-11-01", "2025-12-01", "2025-12-29", "2026-01-18"],
         )
         registered = self.service.get_document(document_id)["draft"]
         states = {fv["verification"]["state"] for enc in registered["encounters"] for fv in enc["fields"].values()}
         self.assertNotIn("UNVERIFIED", states)
 
     def test_confirm_retry_saves_visits_once(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         self.review_sample(document_id)
         self.service.select_patient(document_id, reviewer=REVIEWER, choice="EXISTING", patient_id="PAT-000001")
@@ -127,30 +128,30 @@ class EndToEndTest(FlowTestCase):
         self.assertEqual([v["visit_id"] for v in first["visits"]], [v["visit_id"] for v in second["visits"]])
 
     def test_illegible_field_needs_explicit_answer(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
-        detail = self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=2,
+        detail = self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=5,
                                            field="visit_date", action="CONFIRM")
         self.assertEqual([b["field"] for b in detail["review"]["blocking"]], ["fundal_height_cm"])
 
     def test_required_visit_date_cannot_be_marked_missing(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         with self.assertRaises(Invalid):
-            self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=2,
+            self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=5,
                                       field="visit_date", action="SET_STATUS", field_status="ILLEGIBLE")
 
     def test_invalid_correction_is_rejected_without_change(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         with self.assertRaises(Invalid):
-            self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=2,
+            self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=5,
                                       field="visit_date", action="CORRECT", value="32/12/2025")
-        fv = self.service.get_document(document_id)["draft"]["encounters"][2]["fields"]["visit_date"]
-        self.assertEqual((fv["value"], fv["corrections"]), ("2025-12-12", []))
+        fv = self.service.get_document(document_id)["draft"]["encounters"][5]["fields"]["visit_date"]
+        self.assertEqual((fv["value"], fv["corrections"]), ("2026-01-13", []))
 
     def test_stale_revision_is_rejected(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         revision = self.service.get_document(document_id)["document"]["revision"]
         self.review_sample(document_id)
@@ -168,7 +169,7 @@ class DuplicateTest(FlowTestCase):
         self.assertEqual(len(self.service.thread(SENDER)), messages, "no second acknowledgment")
 
     def test_rephotographed_booklet_creates_no_new_visit(self):
-        document_id = self.send(COVER, T1_GRID)
+        document_id = self.send(*HISTORY)
         self.wait_for_draft()
         detail = self.service.get_document(document_id)
         self.assertEqual(detail["document"]["status"], "VALIDATED")
@@ -181,7 +182,7 @@ class DuplicateTest(FlowTestCase):
         self.assertEqual(self.visit_count(), before)
 
     def test_changed_value_on_existing_visit_requires_decision(self):
-        document_id = self.send(COVER, T1_GRID)
+        document_id = self.send(*HISTORY)
         self.wait_for_draft()
         self.service.review_field(document_id, reviewer=REVIEWER, scope="encounter", encounter_index=1,
                                   field="weight_kg", action="CORRECT", value="59")
@@ -197,7 +198,7 @@ class DuplicateTest(FlowTestCase):
         self.assertEqual((visit["fields"]["weight_kg"]["value"], visit["revisions"]), (59, 1))
 
     def test_new_patient_with_registered_key_is_rejected(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         self.review_sample(document_id)
         self.service.select_patient(document_id, reviewer=REVIEWER, choice="NEW")
@@ -207,7 +208,7 @@ class DuplicateTest(FlowTestCase):
         self.assertEqual(len(self.service.list_patients()), 1)
 
     def test_unsure_parks_document(self):
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         self.review_sample(document_id)
         detail = self.service.select_patient(document_id, reviewer=REVIEWER, choice="UNSURE")
@@ -223,7 +224,7 @@ class DuplicateTest(FlowTestCase):
 class QueueAndGroupingTest(FlowTestCase):
     def test_queue_waits_while_ai_unavailable_and_survives_restart(self):
         self.service.set_ai_available(False)
-        document_id = self.send(COVER, T2_T3_GRID)
+        document_id = self.send(*SAMPLE)
         self.wait_for_draft()
         self.assertEqual(self.service.get_document(document_id)["document"]["status"], "PENDING_AI")
 
@@ -238,15 +239,15 @@ class QueueAndGroupingTest(FlowTestCase):
     def test_pages_after_window_start_a_new_document(self):
         first = self.send(COVER)
         self.clock.advance(30)
-        second = self.send(T2_T3_GRID)
+        second = self.send(GRID)
         self.assertNotEqual(first, second)
 
     def test_split_and_regroup_pages(self):
-        mixed = self.send(COVER, T2_T3_GRID, T1_GRID)
+        mixed = self.send(*SAMPLE, DELIVERY)
         self.wait_for_draft()
         self.assertEqual(self.service.get_document(mixed)["document"]["status"], "PROCESSING_FAILED")
 
-        t1_page = self.service.get_document(mixed)["pages"][2]["page_id"]
+        t1_page = self.service.get_document(mixed)["pages"][3]["page_id"]
         moved = self.service.move_page(t1_page, reviewer=REVIEWER)
         split_off = moved["to_document_id"]
         self.service.tick()
@@ -262,7 +263,7 @@ class QueueAndGroupingTest(FlowTestCase):
             self.service.get_document(split_off)
 
     def test_manual_entry_after_failed_extraction(self):
-        document_id = self.send(T1_GRID)
+        document_id = self.send(DELIVERY)
         self.wait_for_draft()
         detail = self.service.start_manual_entry(document_id, reviewer=REVIEWER)
         self.assertEqual(detail["document"]["status"], "NEEDS_REVIEW")

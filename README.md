@@ -51,54 +51,77 @@ python -m dayone --port 8765 --window 8 --db var/dayone.sqlite3
 python -m unittest discover -s tests -v
 ```
 
-The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 first-trimester visits). Use **Réinitialiser la démo** to start over.
+The database is created in `var/` and seeded with one patient (`PAT-000001`, the first 3 visits of specimen patient 1). Use **Réinitialiser la démo** to start over.
 
-### Local real-photo OCR (Tesseract)
+### Local OCR on the specimen pages (Tesseract)
 
-Install Tesseract with French language data (macOS: `brew install tesseract tesseract-lang`),
-then run the local OCR with:
+Install Tesseract with French language data (macOS: `brew install tesseract tesseract-lang`) and Pillow
+(`pip install -r requirements.txt`), then run:
 
 ```sh
 python3 -m dayone --extractor tesseract --port 8001 --db var/dayone-tesseract.sqlite3
 ```
 
-Pages of one submission are read in parallel; three specimen pages take under a
-second. This uses OCR only, with no VLM. Pillow (`pip install -r requirements.txt`)
-adds the image-quality checks below.
+The OCR reads **only** the specimen pictures `data/Paper Registry/dossiers_specimen_*`. Any other image fails
+extraction with `NOT_A_SPECIMEN_PAGE` and goes to manual entry. Send the eight pages of one booklet together
+(patient 1 is pages 01–08, patient 2 is 09–16, and so on).
 
-PaddleOCR remains available for comparison with `--extractor paddleocr`. It needs
-Python 3.12 and the pinned dependencies (the existing `.venv-paddle312`
-environment is ready). On patient 1 it read the same fields correctly but took
-about 52 s and about 7 GB of RAM for three pages, and accepted a misread registry
-number. `eval/compare_ocr.py` compares the engines against `eval/ground_truth.json`.
+How it reads (`dayone/specimen_ocr.py`):
 
-Use only `dossiers_specimen_10_patientes-01.png` through
-`dossiers_specimen_10_patientes-06.png` from `data/Paper Registry/` for this
-OCR demo. The interface selects these six PNGs by default; the JPG fixture
-walkthrough below is a separate fixture mode.
+- Pages are recognised by their printed title, not their file name. The cover gives the file number and the
+  facility, the "Grossesse actuelle" page gives the DDR and the visit grid. Pages from two booklets in one
+  document fail with `SEVERAL_BOOKLETS` so the reviewer can split them.
+- Every grid column with a visit date becomes a visit (slots `T1_V1` … `M9`). Rows are anchored on their printed
+  labels; blank cells and dashes become `NOT_PROVIDED` from the pixels, before any OCR.
+- Each value is read four times (page in French, page in English, cell crop with and without a character
+  whitelist). It is `KNOWN` only if at least three readings agree and none disagrees, **and** it is consistent
+  with the booklet: gestational age against DDR and visit date, visit dates in order, plausible weight change
+  between visits, fundal height against a confirmed gestational age. Confidence is the share of agreeing readings.
+- Everything else goes to review with the best candidate and a flag saying why. Checks only demote values; nothing
+  is inferred from other fields.
 
-The parser reads the final antenatal visit from bounded cells in the selected
-clinical page's fixed layout. It accepts complete OCR readings at confidence
-0.85 or higher after format and range validation. No specimen values are
-provided to the OCR engine or the parser. Unread fields, including document fields,
-require review. Urine-test results are never mapped to serology fields.
+Accuracy on the 10 specimen patients (`python3 eval/compare_ocr.py --markdown`, about 2.4 s per patient on a laptop):
 
-It rejects very small images with `RETAKE_REQUIRED`, including PNG dimensions
-checked without additional dependencies. If Pillow is installed, it also checks
-image decoding, darkness, and overexposure. Without Pillow, these additional
-quality checks are unavailable.
-For readable labelled values it returns `KNOWN`; unclear handwritten values are
-returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person.
+| field | KNOWN, right | FALSE-KNOWN | review | review (blank cell) | empty, right | missed | right value suggested |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| registry_file_number | 0 | 0 | 10 | 0 | 0 | 0 | 2 |
+| midwife_patient_code | 0 | 0 | 0 | 0 | 10 | 0 | 0 |
+| facility_name | 1 | 0 | 9 | 0 | 0 | 0 | 2 |
+| last_menstrual_period | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
+| visit_date | 24 | 0 | 31 | 0 | 0 | 0 | 15 |
+| gestational_age_days | 20 | 0 | 35 | 0 | 0 | 0 | 10 |
+| weight_kg | 17 | 0 | 38 | 0 | 0 | 0 | 15 |
+| systolic_bp_mmhg | 15 | 0 | 40 | 0 | 0 | 0 | 10 |
+| diastolic_bp_mmhg | 15 | 0 | 40 | 0 | 0 | 0 | 14 |
+| fundal_height_cm | 12 | 0 | 32 | 0 | 11 | 0 | 20 |
+| syphilis_test | 7 | 0 | 3 | 3 | 42 | 0 | 2 |
+| hiv_test | 4 | 0 | 6 | 8 | 37 | 0 | 6 |
+| **total** | **120** | **0** | **249** | **11** | **100** | **0** | **96** |
+
+Of 369 values written on the pages, 120 (33 %) come out `KNOWN` and right, none comes out `KNOWN` and wrong, and none
+is missed; the reviewer confirms or corrects the rest, with the right value already suggested for 96 of them.
+
+Limits, stated plainly:
+
+- The ground truth (`eval/ground_truth.json`) was transcribed by eye and is **not verified by a person yet**. The
+  agreement thresholds and consistency tolerances were chosen on these same 10 patients; there is no held-out set.
+- Handwriting styles vary per patient; Tesseract reads some of them poorly (patients 2, 3, 7 and 10 mostly go to
+  review). Real phone photos (perspective, blur, Arabic handwriting) are not handled: the layout is the fixed
+  specimen scan.
+- Ticked boxes (facility type, blood group) are not read; `eval/mark_detection_demo.py` is a prototype only.
+
+PaddleOCR remains available for comparison with `--extractor paddleocr` (Python 3.12 and the pinned
+dependencies, `.venv-paddle312`). On patient 1 it took about 52 s and 7 GB of RAM for three pages.
 
 ### Demo script
 
-1. **Midwife (simulated phone on the left):** select `1-1.jpg` then `1-5.jpg`, then press **Envoyer**. Each page gets an acknowledgment, and the document appears in the queue as a provisional group.
-2. Wait about 8 s (the grouping window). The fixture extractor produces a draft with 3 visits and **2 uncertain fields**.
+1. **Midwife (simulated phone on the left):** select specimen pages `…-01.png`, `…-02.png` and `…-03.png`, then press **Envoyer**. Each page gets an acknowledgment, and the document appears in the queue as a provisional group.
+2. Wait about 8 s (the grouping window). The fixture extractor produces a draft with 6 visits and **2 uncertain fields**.
 3. **Back-office:** answer the questions:
-   - Hauteur utérine (2e trimestre – visite 1) is illegible ("2? cm"). Click **Corriger** and enter `25`.
-   - Date of the 9th-month visit was read as "1?/12/25" at 42 % confidence. Click **Corriger** and enter `19/12/2025`, which matches the 40 SA + 1 j gestational age.
-4. **Patient:** `PAT-000001` is *suggested* because both keys match. Click it to select. Nothing is saved yet.
-5. **CONFIRMER l'enregistrement:** 3 visits are created, and the timeline shows 6 visits with the new ones highlighted.
+   - Hauteur utérine (8e mois) is illegible ("3?"). Click **Corriger** and enter `31`.
+   - Date of the 9th-month visit was read as "1?/01/2026" at 42 % confidence. Click **Corriger** and enter `18/01/2026`, which matches 38 SA from the DDR.
+4. **Patient:** `PAT-000001` is *suggested* because the file number matches. Click it to select. Nothing is saved yet.
+5. **CONFIRMER l'enregistrement:** the first three visits are already registered (unchanged), three new visits are created, and the timeline shows 6 visits.
 6. Optional checks:
    - **Rejouer le dernier webhook** is ignored as a duplicate.
    - Untick **IA disponible** and send photos: they wait in `PENDING_AI` until it is ticked again.
@@ -121,7 +144,7 @@ returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person.
 | WhatsApp inbound | Browser phone panel posts `{sender_id, message_id, media_ref}` to `/api/whatsapp/messages`. Images must already be in `data/Paper Registry/` | Not started: Meta webhook format, signature check, media download |
 | WhatsApp outbound | Acknowledgments stored in the database and shown in the simulated thread | Not started: sending through the Cloud API |
 | Senders | One seeded demo number mapped to *C/S Sidi Smail* | Not started: sender registration |
-| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` uses fast local Tesseract (or PaddleOCR for comparison) for real registry photos and sends unclear handwriting to review | OCR is local only; WhatsApp media download is not started |
+| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` reads the specimen pages with local Tesseract (four readings + consistency checks) and sends anything uncertain to review | OCR is local only; WhatsApp media download is not started |
 | AI outage | "IA disponible" toggle | Would be a real extractor timeout or failure |
 
 ### Open blockers and limitations
