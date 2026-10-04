@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> None:
     password = service.auth.ensure_admin()
     if password:
         print(f"Premier démarrage : compte « admin », mot de passe « {password} » (affiché une seule fois ; "
-              "créez des comptes nominatifs avec --add-user).")
+              "créez des comptes nominatifs avec --add-user).", flush=True)
     # Fixture mode includes a pre-confirmed history for the visual demo.  Real
     # OCR always requires a human review, so it must start with an empty demo.
     if args.extractor != "fixture":
@@ -406,7 +406,7 @@ def main(argv: list[str] | None = None) -> None:
         scheme = "https"
     stop = threading.Event()
     threading.Thread(target=_run_worker, args=(service, stop), daemon=True).start()
-    print(f"DayOne prototype running at {scheme}://{args.host}:{args.port}/  (Ctrl+C to stop)")
+    print(f"DayOne prototype running at {scheme}://{args.host}:{args.port}/  (Ctrl+C to stop)", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
