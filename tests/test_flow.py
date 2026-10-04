@@ -270,5 +270,60 @@ class QueueAndGroupingTest(FlowTestCase):
         self.assertEqual(len(detail["review"]["blocking"]), 12)
 
 
+class ManualEntryAndFailureTest(FlowTestCase):
+    def test_manual_entry_while_ai_is_down_with_several_visits(self):
+        self.service.set_ai_available(False)
+        document_id = self.send(DELIVERY)
+        self.wait_for_draft()
+        detail = self.service.start_manual_entry(document_id, reviewer=REVIEWER)
+        self.assertEqual(detail["events"][-2]["detail"]["reason"], "AI_UNAVAILABLE")
+        detail = self.service.add_manual_encounter(document_id, reviewer=REVIEWER)
+        self.assertEqual(len(detail["draft"]["encounters"]), 2)
+        self.assertEqual(len(detail["review"]["blocking"]), 4 + 2 * 8)
+        self.service.set_ai_available(True)
+        self.service.tick()  # the manual draft is not overwritten by a late extraction
+        self.assertEqual(self.service.get_document(document_id)["draft"]["extraction"]["extractor"], "manual")
+
+    def test_manual_entry_is_refused_while_ai_works(self):
+        document_id = self.send(*SAMPLE)
+        with self.assertRaises(Conflict):
+            self.service.start_manual_entry(document_id, reviewer=REVIEWER)
+        self.wait_for_draft()
+        with self.assertRaises(Conflict):
+            self.service.add_manual_encounter(document_id, reviewer=REVIEWER)
+
+    def test_crash_during_extraction_keeps_the_document_queued(self):
+        class Crashing:
+            name = "crashing"
+            calls = 0
+
+            def extract(self, refs):
+                Crashing.calls += 1
+                raise RuntimeError("worker died")
+        real = self.service.extractor
+        self.service.extractor = Crashing()
+        document_id = self.send(*SAMPLE)
+        with self.assertLogs("dayone.service", "ERROR"):
+            self.wait_for_draft()
+        self.assertEqual(self.service.get_document(document_id)["document"]["status"], "PENDING_AI")
+        self.service.extractor = real
+        self.service.tick()
+        self.assertEqual((Crashing.calls, self.service.get_document(document_id)["document"]["status"]), (1, "NEEDS_REVIEW"))
+
+    def test_draft_breaking_the_contract_fails_explicitly(self):
+        class Broken:
+            name = "broken"
+
+            def extract(self, refs):
+                draft = FixtureExtractor(REPO_ROOT / "fixtures").extract(list(SAMPLE))
+                draft["encounters"][0]["fields"]["weight_kg"]["value"] = 999
+                return draft
+        self.service.extractor = Broken()
+        document_id = self.send(*SAMPLE)
+        self.wait_for_draft()
+        document = self.service.get_document(document_id)["document"]
+        self.assertEqual((document["status"], document["failure_reason"]), ("PROCESSING_FAILED", "INVALID_EXTRACTION"))
+
+
 if __name__ == "__main__":
     unittest.main()

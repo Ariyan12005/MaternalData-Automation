@@ -503,11 +503,31 @@ class DayOneService:
         now = self.clock()
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
-            if document["status"] != "PROCESSING_FAILED":
-                raise Conflict("NOT_FAILED", "La saisie manuelle est réservée aux dossiers en échec d'extraction.")
+            waiting_for_ai = document["status"] == "PENDING_AI" and not self._ai_available(db)
+            if document["status"] != "PROCESSING_FAILED" and not waiting_for_ai:
+                raise Conflict("NOT_FAILED", "La saisie manuelle est réservée aux dossiers en échec d'extraction "
+                                             "ou en attente pendant une panne de l'IA.")
             self._save_draft(db, document_id, schema.manual_draft(self._page_refs(db, document_id), _iso(now)), now)
-            self._event(db, document_id, "MANUAL_ENTRY_STARTED", reviewer, now, {})
+            self._event(db, document_id, "MANUAL_ENTRY_STARTED", reviewer, now,
+                        {"reason": "AI_UNAVAILABLE" if waiting_for_ai else "PROCESSING_FAILED"})
             self._set_status(db, document_id, "NEEDS_REVIEW", now, actor=reviewer)
+        return self.get_document(document_id)
+
+    def add_manual_encounter(self, document_id: str, *, reviewer: str, expected_revision: int | None = None) -> dict:
+        """Add a blank visit (one more grid column) to a manually entered draft."""
+        reviewer = self._reviewer(reviewer)
+        now = self.clock()
+        with self.store.tx() as db:
+            document = self._load_reviewable(db, document_id, expected_revision)
+            draft = json.loads(document["draft_json"])
+            if draft["extraction"]["extractor"] != "manual":
+                raise Conflict("NOT_MANUAL", "Des visites ne s'ajoutent qu'en saisie manuelle.")
+            if len(draft["encounters"]) >= len(schema.SLOTS):
+                raise Invalid("TOO_MANY_VISITS", "Nombre maximal de visites atteint.")
+            draft["encounters"].append(schema.manual_draft([], _iso(now))["encounters"][0])
+            self._save_draft(db, document_id, draft, now)
+            self._event(db, document_id, "MANUAL_VISIT_ADDED", reviewer, now, {"encounter_index": len(draft["encounters"]) - 1})
+            self._recompute_status(db, document_id, now)
         return self.get_document(document_id)
 
     # ------------------------------------------------------------------ review

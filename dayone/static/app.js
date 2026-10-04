@@ -215,6 +215,10 @@ function requestRetake(page) {
   act(() => api("POST", `/api/pages/${page.page_id}/retake`, { reason }));
 }
 
+function addManualVisit() {
+  return act(() => api("POST", `/api/documents/${state.documentId}/encounters`, { expected_revision: revision() }));
+}
+
 function movePage(pageId, target) {
   return act(() => api("POST", `/api/pages/${pageId}/move`, { target_document_id: target }));
 }
@@ -714,9 +718,11 @@ function currentStep(d) {
     return botMessage(`Réception des pages en cours. Le dossier part en extraction ${state.system.grouping_window_seconds} s après la dernière photo.`);
   }
   if (step === "WAITING_AI") {
-    return botMessage(state.system.ai_available
-      ? "En file d'attente pour l'extraction…"
-      : "IA indisponible : le dossier attend dans la file. Rien n'est perdu ; il sera traité au retour de l'IA.");
+    if (state.system.ai_available) return botMessage("En file d'attente pour l'extraction…");
+    return el("div", { class: "msg bot question" },
+      el("p", {}, "IA indisponible : le dossier attend dans la file. Rien n'est perdu ; il sera traité au retour de l'IA. "
+        + "Vous pouvez aussi le saisir à la main dès maintenant."),
+      el("div", { class: "actions" }, button("Saisie manuelle", startManualEntry)));
   }
   if (step === "WAITING_RETAKE") {
     const pages = d.pages.filter((p) => p.retake_requested_at).map((p) => p.position).join(", ");
@@ -938,8 +944,10 @@ function renderFieldGrid(d) {
       draft.encounters.map((encounter, index) =>
         cell({ scope: "encounter", encounter_index: index, field: name }, encounter.fields[name]))))));
 
+  const manual = draft.extraction.extractor === "manual" && editable;
   return el("details", { class: "field-grid", open: true },
     el("summary", {}, editable ? "Tous les champs (cliquer une case pour la modifier)" : "Tous les champs"),
+    manual ? el("div", { class: "actions" }, button("Ajouter une visite", addManualVisit, "small")) : null,
     el("div", { class: "legend" },
       ["KNOWN", "NEEDS_REVIEW", "ILLEGIBLE", "NOT_PROVIDED"].map((s) => el("span", { class: `cell st-${s}` }, FIELD_STATUS[s])),
       el("span", { class: "cell v-CORRECTED" }, "corrigé"), el("span", { class: "cell v-CONFIRMED" }, "confirmé")),

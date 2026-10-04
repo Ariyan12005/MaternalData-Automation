@@ -109,6 +109,8 @@ class Api:
                 expected_revision=b.get("expected_revision"))),
             ("POST", r"/api/documents/(DOC-\d+)/manual-entry", "any", lambda m, q, b, u: s.start_manual_entry(
                 m[1], reviewer=u["username"])),
+            ("POST", r"/api/documents/(DOC-\d+)/encounters", "any", lambda m, q, b, u: s.add_manual_encounter(
+                m[1], reviewer=u["username"], expected_revision=b.get("expected_revision"))),
             ("POST", r"/api/pages/(PAGE-\d+)/move", "any", lambda m, q, b, u: s.move_page(
                 m[1], reviewer=u["username"], target_document_id=b.get("target_document_id"))),
             ("POST", r"/api/pages/(PAGE-\d+)/retake", "any", lambda m, q, b, u: s.request_retake(
