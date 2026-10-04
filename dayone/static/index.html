@@ -5,13 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DayOne – prototype</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:,">
 </head>
 <body>
   <header class="topbar">
-    <h1>DayOne <span>prototype à fixtures</span></h1>
+    <h1>DayOne <span id="mode-label">prototype</span></h1>
     <div class="controls">
       <span id="current-user" class="muted"></span>
       <label class="toggle admin-only"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
+      <label class="toggle admin-only"><input type="checkbox" id="central-toggle" checked> Registre central disponible</label>
       <button id="reset-demo" type="button" class="ghost admin-only">Réinitialiser la démo</button>
       <button id="logout" type="button" class="ghost">Se déconnecter</button>
     </div>
@@ -20,8 +22,13 @@
   <main class="layout">
     <section class="phone" aria-label="WhatsApp simulé de la sage-femme">
       <div class="phone-header">
-        <strong>WhatsApp (simulé)</strong>
+        <div class="row">
+          <strong>WhatsApp (simulé)</strong>
+          <label class="network" title="Couper le réseau du téléphone : les photos attendent, chiffrées, sur le téléphone">
+            <input type="checkbox" id="phone-network" checked> Réseau</label>
+        </div>
         <span id="sender-label"></span>
+        <span id="outbox-status" hidden></span>
       </div>
       <div id="thread" class="thread" aria-live="polite"></div>
       <div class="composer">

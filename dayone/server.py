@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import mimetypes
+import os
 import re
 import ssl
 import threading
@@ -22,6 +23,7 @@ from .live_ocr import LiveOcrExtractor, PaddleOcrReader, TesseractOcrReader
 from .media import MAX_PHOTO_BYTES, MediaStore
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
+from .sync import HttpCentralRegistry, LocalCentralRegistry
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -58,6 +60,11 @@ def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extr
     service.extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
                          else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode](), media=service.read_media))
     service.auth = Auth(service.store)
+    if os.environ.get("DAYONE_CENTRAL_URL"):
+        service.central = HttpCentralRegistry(os.environ["DAYONE_CENTRAL_URL"], os.environ.get("DAYONE_CENTRAL_SECRET", ""))
+    else:
+        service.central = LocalCentralRegistry(var_dir / "central" / "registry.log", keys.get("central"),
+                                               available=service.central_reachable)
     return service
 
 
@@ -72,6 +79,7 @@ class Api:
             ("GET", r"/api/me", "any", lambda m, q, b, u: u),
             ("GET", r"/api/system", "any", lambda m, q, b, u: s.system_info()),
             ("POST", r"/api/system/ai", "admin", lambda m, q, b, u: s.set_ai_available(bool(b.get("available")))),
+            ("POST", r"/api/system/central", "admin", lambda m, q, b, u: s.set_central_available(bool(b.get("available")))),
             ("POST", r"/api/demo/reset", "admin", self._reset),
             ("GET", r"/api/users", "admin", lambda m, q, b, u: self.auth.list_users()),
             ("POST", r"/api/users", "admin", lambda m, q, b, u: self.auth.create_user(
@@ -84,7 +92,8 @@ class Api:
             ("GET", r"/api/media", "any", lambda m, q, b, u: s.list_media()),
             ("POST", r"/api/media", "any", lambda m, q, b, u: s.upload_photo(b)),
             ("POST", r"/api/whatsapp/messages", "any", lambda m, q, b, u: s.ingest_photo(
-                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"))),
+                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"),
+                captured_at=b.get("captured_at"))),
             ("GET", r"/api/whatsapp/thread", "any", lambda m, q, b, u: s.thread(_query(q, "sender_id"))),
             ("GET", r"/api/documents", "any", lambda m, q, b, u: s.list_documents()),
             ("GET", r"/api/documents/(DOC-\d+)", "any", lambda m, q, b, u: s.get_document(m[1])),

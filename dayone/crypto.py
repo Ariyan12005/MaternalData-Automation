@@ -74,4 +74,4 @@ def load_master_key(var_dir: Path) -> bytes:
 
 
 def ciphers(master: bytes) -> dict[str, Cipher]:
-    return {purpose: Cipher(_derive(master, purpose)) for purpose in ("database", "media", "outbox")}
+    return {purpose: Cipher(_derive(master, purpose)) for purpose in ("database", "media", "central")}

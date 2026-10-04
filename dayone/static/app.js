@@ -7,8 +7,9 @@ const DOC_STATUS = {
   CAPTURED: "Réception des pages", PENDING_AI: "En attente IA", AI_PROCESSED: "Traité par l'IA",
   NEEDS_REVIEW: "À vérifier", VALIDATED: "Champs validés", PATIENT_MATCHED: "Patiente choisie",
   REGISTERED: "Enregistré", PROCESSING_FAILED: "Échec extraction", DUPLICATE_SUSPECTED: "Doublon suspecté",
-  MANUAL_REVIEW_REQUIRED: "Photo à reprendre",
+  MANUAL_REVIEW_REQUIRED: "Photo à reprendre", SYNCED: "Synchronisé", SYNC_FAILED: "Synchro en échec",
 };
+const REGISTERED_STATES = new Set(["REGISTERED", "SYNCED", "SYNC_FAILED"]);
 const FIELD_STATUS = {
   KNOWN: "lu", NEEDS_REVIEW: "à vérifier", ILLEGIBLE: "illisible", NOT_PROVIDED: "non renseigné",
   UNKNOWN: "inconnu", NOT_APPLICABLE: "non applicable",
@@ -57,6 +58,9 @@ const state = {
   busy: false,
   signatures: {},
   user: null,
+  online: true,
+  outbox: [],
+  lastThread: [],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -100,7 +104,7 @@ async function api(method, path, body) {
 
 const spec = (name) => state.system.catalog.fields[name];
 const slotLabel = (slot) => state.system.catalog.slots[slot] || slot;
-const basename = (ref) => ref.split("/").pop();
+const basename = (ref) => (ref.startsWith("upload/") ? `photo caméra ${ref.slice(7, 13)}` : ref.split("/").pop());
 const mediaUrl = (ref) => "/media/" + encodeURIComponent(ref);
 const pct = (c) => (c === null || c === undefined ? "—" : `${Math.round(c * 100)} %`);
 
@@ -232,6 +236,11 @@ async function sendPhotos() {
   const refs = [...state.selectedMedia];
   state.selectedMedia = [];
   renderMedia();
+  if (!state.online) {
+    for (const ref of refs) await queueOffline({ media_ref: ref });
+    notify(`${refs.length} photo(s) en attente sur le téléphone (chiffrées) : elles partiront au retour du réseau.`);
+    return;
+  }
   for (const ref of refs) {
     const body = { sender_id: state.senderId, message_id: newMessageId(), media_ref: ref };
     try {
@@ -259,9 +268,116 @@ async function replayLastMessage() {
   await refreshAll(true);
 }
 
+// ---------------------------------------------------------------- phone outbox (offline)
+// Photos taken without network wait on the phone, encrypted with AES-GCM under a
+// non-extractable key kept in IndexedDB; they are sent in order on reconnection
+// with their original message id, so a replay is ignored by the server.
+
+const OUTBOX_DB = "dayone-phone-outbox";
+
+function outboxDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(OUTBOX_DB, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("keys");
+      request.result.createObjectStore("items", { keyPath: "id", autoIncrement: true });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idb(store, mode, operation) {
+  const db = await outboxDb();
+  return new Promise((resolve, reject) => {
+    const request = operation(db.transaction(store, mode).objectStore(store));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function outboxKey() {
+  let key = await idb("keys", "readonly", (s) => s.get("main"));
+  if (!key) {
+    key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    await idb("keys", "readwrite", (s) => s.put(key, "main"));
+  }
+  return key;
+}
+
+async function seal(bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  return { iv, data: await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await outboxKey(), bytes) };
+}
+
+async function unseal(box) {
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv: box.iv }, await outboxKey(), box.data);
+}
+
+async function queueOffline({ media_ref = null, blob = null }) {
+  if (!window.crypto?.subtle) {
+    notify("Chiffrement indisponible dans ce navigateur : file hors ligne désactivée.", "error");
+    return;
+  }
+  const meta = { sender_id: state.senderId, message_id: newMessageId(), media_ref,
+                 captured_at: new Date().toISOString() };
+  const item = { meta: await seal(new TextEncoder().encode(JSON.stringify(meta))) };
+  if (blob) item.photo = await seal(await blob.arrayBuffer());
+  await idb("items", "readwrite", (s) => s.add(item));
+  await loadOutbox();
+}
+
+async function loadOutbox() {
+  if (!window.indexedDB || !window.crypto?.subtle) return;
+  const items = await idb("items", "readonly", (s) => s.getAll());
+  state.outbox = [];
+  for (const item of items) {
+    const meta = JSON.parse(new TextDecoder().decode(await unseal(item.meta)));
+    state.outbox.push({ id: item.id, meta, hasPhoto: Boolean(item.photo) });
+  }
+  const status = $("#outbox-status");
+  status.hidden = state.outbox.length === 0;
+  status.textContent = `${state.outbox.length} photo(s) en attente sur le téléphone (chiffrées)`;
+  renderThread(state.lastThread);
+}
+
+async function flushOutbox() {
+  const items = await idb("items", "readonly", (s) => s.getAll());
+  let sent = 0;
+  for (const item of items) {
+    const meta = JSON.parse(new TextDecoder().decode(await unseal(item.meta)));
+    try {
+      if (item.photo) {
+        const bytes = await unseal(item.photo);
+        const blob = new Blob([bytes], { type: "image/jpeg" });
+        meta.media_ref = (await uploadBlob(blob)).media_ref;
+      }
+      const result = await api("POST", "/api/whatsapp/messages", meta);
+      state.lastMessage = meta;
+      if (result.document_id !== state.documentId) selectDocument(result.document_id);
+      await idb("items", "readwrite", (s) => s.delete(item.id));
+      sent += 1;
+    } catch (error) {
+      notify(`Envoi interrompu : ${error.message}`, "error");
+      break;
+    }
+  }
+  await loadOutbox();
+  if (sent) notify(`Réseau revenu : ${sent} photo(s) envoyée(s) dans l'ordre de prise de vue.`);
+  $("#replay-last").disabled = !state.lastMessage;
+  await refreshAll(true);
+}
+
+async function setNetwork(online) {
+  state.online = online;
+  $(".phone").classList.toggle("offline", !online);
+  if (online) await flushOutbox();
+  else notify("Téléphone hors ligne : les photos restent sur le téléphone, chiffrées, jusqu'au retour du réseau.");
+}
+
 // ---------------------------------------------------------------- camera
 
-async function uploadPhoto(blob) {
+async function uploadBlob(blob) {
   const response = await fetch("/api/media", {
     method: "POST",
     headers: { "Content-Type": blob.type || "image/jpeg", "X-Requested-With": "dayone" },
@@ -269,6 +385,16 @@ async function uploadPhoto(blob) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error?.message || `Erreur ${response.status}`);
+  return data;
+}
+
+async function uploadPhoto(blob) {
+  if (!state.online) {
+    await queueOffline({ blob });
+    notify("Photo prise hors ligne : elle attend sur le téléphone, chiffrée.");
+    return;
+  }
+  const data = await uploadBlob(blob);
   state.captures = [...state.captures.filter((ref) => ref !== data.media_ref), data.media_ref];
   if (!state.selectedMedia.includes(data.media_ref)) state.selectedMedia = [...state.selectedMedia, data.media_ref];
   renderMedia();
@@ -330,6 +456,9 @@ async function refreshSystem() {
   const system = await api("GET", "/api/system");
   state.system = system;
   $("#ai-toggle").checked = system.ai_available;
+  $("#central-toggle").checked = system.central_available;
+  $("#mode-label").textContent = system.extractor === "fixture" ? "prototype · extraction à fixtures"
+    : `prototype · OCR ${system.extractor} (pages spécimen)`;
 }
 
 async function refreshThread(force) {
@@ -389,14 +518,19 @@ async function refreshTimeline(force) {
 // ---------------------------------------------------------------- phone
 
 function renderThread(messages) {
+  state.lastThread = messages;
   const box = $("#thread");
   const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const pending = state.outbox.map((item) => el("div", { class: "bubble mine pending" },
+    item.meta.media_ref ? el("small", {}, basename(item.meta.media_ref)) : el("small", {}, "photo (caméra)"),
+    el("span", {}, "⏱ en attente du réseau"),
+    el("time", {}, `prise à ${fmtTime(item.meta.captured_at)}`)));
   box.replaceChildren(...messages.map((m) => el("div", { class: `bubble ${m.direction === "IN" ? "mine" : "theirs"}` },
     m.media_ref ? el("img", { src: mediaUrl(m.media_ref), alt: basename(m.media_ref) }) : null,
     m.media_ref ? el("small", {}, basename(m.media_ref)) : null,
     m.body ? el("span", {}, m.body) : null,
     el("time", {}, fmtTime(m.created_at)),
-  )));
+  )), ...pending);
   if (atBottom || messages.length < 4) box.scrollTop = box.scrollHeight;
 }
 
@@ -476,11 +610,12 @@ function renderDocumentHeader(d) {
 }
 
 function renderPages(d) {
-  const locked = d.document.status === "REGISTERED";
+  const locked = REGISTERED_STATES.has(d.document.status);
   return el("div", { class: "pages" }, d.pages.map((page) => el("figure", { class: "page" },
     el("a", { href: mediaUrl(page.media_ref), target: "_blank", rel: "noopener" },
       el("img", { src: mediaUrl(page.media_ref), alt: basename(page.media_ref) })),
     el("figcaption", {}, `p.${page.position} · ${basename(page.media_ref)}`),
+    page.captured_at ? el("span", { class: "muted" }, `prise ${fmtTime(page.captured_at)}, reçue ${fmtTime(page.received_at)}`) : null,
     page.retake_requested_at ? el("span", { class: "retake" }, "nouvelle photo demandée") : null,
     locked || page.retake_requested_at || d.document.status === "CAPTURED" ? null
       : button("Reprendre la photo", () => requestRetake(page), "small"),
@@ -550,6 +685,11 @@ function historyMessage(event, d) {
     return el("div", { class: "msg note" },
       `Pages regroupées par ${event.actor} (${detail.page_id} : ${detail.from} → ${detail.to}). `
       + `${detail.discarded_reviews} vérification(s) annulée(s), nouvelle extraction.`);
+  }
+  if (event.type === "STATUS_CHANGED" && ["SYNCED", "SYNC_FAILED"].includes(detail.to)) {
+    return el("div", { class: "msg note" }, detail.to === "SYNCED"
+      ? `Synchronisé avec le registre central (${detail.receipt?.receipt_id ?? ""}).`
+      : `Échec de synchronisation : ${detail.error}. Nouvel essai automatique.`);
   }
   if (event.type === "RETAKE_REQUESTED") {
     return el("div", { class: "msg note" }, `Nouvelle photo de la page ${detail.position} demandée par ${event.actor}`
@@ -757,6 +897,12 @@ function registrationMessage(d) {
       + `patiente ${registration.patient_id}${registration.patient_created ? " (créée)" : ""}.`),
     el("ul", {}, registration.visits.map((visit) => el("li", {},
       `${visit.visit_id} — ${fmtDate(visit.visit_date)} (${slotLabel(visit.slot)}) : ${OUTCOME[visit.outcome]}`))),
+    el("p", { class: d.document.status === "SYNC_FAILED" ? "warn" : "muted" }, {
+      SYNCED: `Synchronisé avec le registre central (reçu ${d.sync_receipt?.receipt_id ?? "—"}).`,
+      SYNC_FAILED: `Registre central injoignable : nouvel essai automatique `
+        + `(${d.document.sync_attempts} essai(s), prochain à ${fmtTime(d.document.sync_next_attempt_at)}).`,
+      REGISTERED: "Envoi au registre central en cours…",
+    }[d.document.status]),
     el("div", { class: "actions" }, button("Voir le suivi de la patiente", () => {
       state.patientId = registration.patient_id;
       refreshTimeline(true);
@@ -896,6 +1042,14 @@ async function start() {
     notify(event.target.checked ? "IA disponible : la file d'attente est traitée." : "IA indisponible : les dossiers restent en file d'attente.");
     await refreshAll(true);
   });
+  $("#central-toggle").addEventListener("change", async (event) => {
+    await api("POST", "/api/system/central", { available: event.target.checked });
+    notify(event.target.checked ? "Registre central disponible : les synchronisations en attente repartent."
+      : "Registre central indisponible : les dossiers enregistrés attendent leur synchronisation.");
+    await refreshAll(true);
+  });
+  $("#phone-network").addEventListener("change", (event) => setNetwork(event.target.checked));
+  await loadOutbox().catch(() => {});
   $("#show-all-media").addEventListener("change", (event) => { state.showAllMedia = event.target.checked; renderMedia(); });
   $("#send-photos").addEventListener("click", sendPhotos);
   $("#open-camera").addEventListener("click", openCamera);

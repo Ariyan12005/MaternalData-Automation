@@ -46,7 +46,10 @@ CREATE TABLE IF NOT EXISTS documents (
     revision INTEGER NOT NULL DEFAULT 0,
     selection_json TEXT,
     registration_json TEXT,
-    failure_reason TEXT
+    failure_reason TEXT,
+    sync_attempts INTEGER NOT NULL DEFAULT 0,
+    sync_next_attempt_at TEXT,
+    sync_receipt_json TEXT
 );
 CREATE TABLE IF NOT EXISTS pages (
     page_id TEXT PRIMARY KEY,
@@ -59,7 +62,8 @@ CREATE TABLE IF NOT EXISTS pages (
     received_at TEXT NOT NULL,
     retake_requested_at TEXT,
     retake_reason TEXT,
-    superseded_by TEXT
+    superseded_by TEXT,
+    captured_at TEXT
 );
 CREATE TABLE IF NOT EXISTS patients (
     patient_id TEXT PRIMARY KEY,
@@ -112,6 +116,10 @@ MIGRATIONS = (
     ("pages", "retake_requested_at", "TEXT"),
     ("pages", "retake_reason", "TEXT"),
     ("pages", "superseded_by", "TEXT"),
+    ("pages", "captured_at", "TEXT"),
+    ("documents", "sync_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("documents", "sync_next_attempt_at", "TEXT"),
+    ("documents", "sync_receipt_json", "TEXT"),
 )
 
 
