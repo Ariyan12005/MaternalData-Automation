@@ -31,7 +31,7 @@ A separate `--db` keeps the demo away from the sandbox databases. **Réinitialis
 
 ## Part B: no fixture → manual entry → review → confirmation → timeline (SIMULATOR + LOCAL)
 
-This is the path every real photo takes today, because the fixture extractor knows only the sample page sets.
+In fixture mode, this is the path for a photo outside the sample page sets. For local PaddleOCR, use Part D.
 
 1. **Simulated phone:** select `dossiers_specimen_10_patientes-01.png` and `dossiers_specimen_10_patientes-03.png`, then press **Envoyer (2)**. Sending both together keeps them in one document.
 2. After the grouping window, the queue shows *Échec de lecture* and the document says *Lecture impossible : choisir une solution*, with the reason *Aucune extraction disponible pour ce groupe de pages (prototype à fixtures)*. Click **Saisie manuelle**.
@@ -94,7 +94,8 @@ Uploaded media stay with Meta for up to 30 days unless deleted. The tool was che
 Needs the OCR install from the [README](../README.md#optional-local-ocr-synthetic-specimen-layout). Specimen pages only; no page leaves the machine.
 
 ```powershell
-.venv\Scripts\python -m dayone --extractor paddle --db var/demo-ocr.sqlite3 --port 8020   # http://127.0.0.1:8020
+$env:DAYONE_OCR_CPU_THREADS = "2"
+.venv\Scripts\python -m dayone --host 127.0.0.1 --extractor paddle --db var/submission-demo.sqlite3 --port 8025 --hold-outbound
 ```
 
 The server loads the OCR models at startup (a few seconds) and refuses to start if a model or package is missing.
@@ -106,3 +107,7 @@ The server loads the OCR models at startup (a few seconds) and refuses to start 
 5. **Read the whole summary against the page before Confirmer et enregistrer.** Values read as sure (`KNOWN`) were not asked about, and confirmation records them as confirmed by the reviewer.
 
 Say when presenting it: the pages are synthetic renders of a handwriting font, not real phone photos. On clean renders no wrong value was marked sure (0 of 667), but on simulated photos 8 of 979 were, with high scores; the score is indicative, not a probability ([ocr-evaluation.md](./ocr-evaluation.md)). Only the specimen layout is read, not the pink booklet.
+
+After registration, demonstrate **Synchroniser avec le registre central (simulé)** and the **Exporter CSV (31 col.)** button. The central receipt and interrupted-network outbox are local simulations. Show the exported headers and verified values, with unavailable values left blank. For offline transport, queue specimen pages in the simulated phone's offline mode, restore the connection, and continue the same OCR review. The browser still needs access to this local server while queuing: disconnected-phone capture is not implemented.
+
+When running from the integration worktree, use the repository's existing Python environment (`..\..\.venv\Scripts\python.exe`) instead of `.venv\Scripts\python` in the command above. Open `http://127.0.0.1:8025/`. Use `--extractor fixture` with Part A as a prepared fallback if the OCR environment is unavailable.

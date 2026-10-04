@@ -844,6 +844,12 @@ function renderConversationalCard(p) {
   if (p.step === "FIELD") {
     const isPage = p.field?.scope === "page";
     if (isPage) {
+      if (actions.includes("SECTION")) {
+        actionButtons.push(button("Vérifier la section dans le dossier", () => {
+          $("#next-action")?.scrollIntoView({ block: "center" });
+          $("#next-action-title")?.focus();
+        }, "card-btn"));
+      }
       if (actions.includes("RETAKE")) {
         actionButtons.push(button("Demander une reprise", () => replyConversational({ action: "RETAKE", expected_revision: rev }), "card-btn primary"));
       }
@@ -877,6 +883,14 @@ function renderConversationalCard(p) {
       }
     }
     actionButtons.push(button("Nouvelle patiente", () => replyConversational({ action: "NEW", expected_revision: rev }), "card-btn"));
+    if (actions.includes("UNSURE")) {
+      actionButtons.push(button("Je ne suis pas sûre", () => replyConversational({ action: "UNSURE", expected_revision: rev }), "card-btn"));
+    }
+  } else if (p.step === "EXISTING_VISITS") {
+    actionButtons.push(button("Examiner les visites dans le récapitulatif", () => {
+      $("#next-action")?.scrollIntoView({ block: "center" });
+      $("#next-action-title")?.focus();
+    }, "card-btn primary"));
   } else if (p.step === "CONFIRM") {
     actionButtons.push(button("Confirmer l'enregistrement", () => replyConversational({ action: "CONFIRM", expected_revision: rev }), "card-btn primary"));
   } else if (p.step === "DONE") {
