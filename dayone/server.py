@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .extraction import FixtureExtractor
-from .live_ocr import LiveOcrExtractor
+from .live_ocr import LiveOcrExtractor, PaddleOcrReader, TesseractOcrReader
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
 
@@ -26,9 +26,11 @@ log = logging.getLogger("dayone")
 
 
 def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extractor_mode: str = "fixture") -> DayOneService:
-    if extractor_mode not in ("fixture", "paddleocr"):
+    readers = {"tesseract": TesseractOcrReader, "paddleocr": PaddleOcrReader}
+    if extractor_mode != "fixture" and extractor_mode not in readers:
         raise ValueError("Unsupported extractor: " + extractor_mode)
-    extractor = FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture" else LiveOcrExtractor(REPO_ROOT)
+    extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
+                 else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode]()))
     return DayOneService(
         Store(db_path),
         extractor,
@@ -195,15 +197,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db", default=str(REPO_ROOT / "var" / "dayone.sqlite3"))
     parser.add_argument("--window", type=int, default=8, help="multipage grouping window in seconds")
-    parser.add_argument("--extractor", choices=("fixture", "paddleocr"), default="fixture",
-                        help="fixture for the stable demo; paddleocr for local real-photo OCR")
+    parser.add_argument("--extractor", choices=("fixture", "tesseract", "paddleocr"), default="fixture",
+                        help="fixture for the stable demo; tesseract for fast local real-photo OCR; "
+                             "paddleocr for the slower PaddleOCR comparison")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     service = build_service(args.db, grouping_window_seconds=args.window, extractor_mode=args.extractor)
     # Fixture mode includes a pre-confirmed history for the visual demo.  Real
     # OCR always requires a human review, so it must start with an empty demo.
-    if args.extractor == "paddleocr":
+    if args.extractor != "fixture":
         service.reset_demo(with_history=False)
     else:
         service.ensure_seed()

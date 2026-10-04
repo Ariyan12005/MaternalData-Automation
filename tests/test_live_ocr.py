@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dayone import schema
 from dayone.extraction import ExtractionError
-from dayone.live_ocr import LiveOcrExtractor, OcrLine, PaddleOcrReader, _section
+from dayone.live_ocr import LiveOcrExtractor, OcrLine, PaddleOcrReader, TesseractOcrReader, _section
 
 
 class FakeReader:
@@ -155,6 +155,56 @@ class LiveOcrTest(unittest.TestCase):
         with self.assertRaises(ExtractionError) as caught:
             PaddleOcrReader(Engine()).read(Path("unused.png"))
         self.assertEqual(caught.exception.code, "OCR_INVALID_RESULT")
+
+    def test_hyphenated_registry_number_is_kept_whole(self):
+        from unittest.mock import patch
+        ref = "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        cases = [
+            ("N° de la fiche : 2026-823-001", 0.95, "2026823001"),
+            ("N° de la fiche ：2026-823-001", 0.95, "2026823001"),
+            ("N° de la fiche : 2026-823-001", 0.60, None),
+            ("N° de la fiche : 2026-823-001 bis", 0.95, None),
+        ]
+        for text, confidence, expected in cases:
+            with self.subTest(text=text, confidence=confidence), patch("dayone.live_ocr.assess_photo"):
+                draft = LiveOcrExtractor(self.root, FakeReader([OcrLine(text, confidence)])).extract([ref])
+                field = draft["document_fields"]["registry_file_number"]
+                self.assertEqual(field["value"], expected)
+                self.assertEqual(field["field_status"], "KNOWN" if expected else "NEEDS_REVIEW")
+
+    def test_pages_read_in_parallel_keep_their_page_refs(self):
+        from unittest.mock import patch
+        class Reader:
+            def read(self, path):
+                return [OcrLine(path.name, 0.99)]
+        refs = [f"data/Paper Registry/dossiers_specimen_10_patientes-{n:02}.png" for n in (1, 2, 3)]
+        extractor = LiveOcrExtractor(self.root, Reader())
+        from dayone import live_ocr
+        captured, parse = [], live_ocr._parse_encounter
+        with patch("dayone.live_ocr.assess_photo"), \
+                patch("dayone.live_ocr._parse_encounter", side_effect=lambda lines, refs: captured.extend(lines) or parse(lines, refs)):
+            extractor.extract(refs)
+        self.assertEqual([(line.text, line.page_ref) for line in captured],
+                         [(Path(ref).name, ref) for ref in refs])
+
+    def test_tesseract_adapter_reads_words_and_coordinates(self):
+        from unittest.mock import patch
+        import subprocess
+        tsv = ("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+               "5\t1\t1\t1\t1\t1\t1427\t698\t60\t20\t95.5\t110/60\n"
+               "5\t1\t1\t1\t1\t2\t10\t10\t5\t5\t-1\t \n")
+        completed = subprocess.CompletedProcess([], 0, stdout=tsv, stderr="")
+        with patch("dayone.live_ocr.subprocess.run", return_value=completed) as run:
+            lines = TesseractOcrReader().read(Path("page.png"))
+        self.assertEqual(lines, [OcrLine("110/60", 0.955, 1427, 698)])
+        self.assertEqual(run.call_args.kwargs["env"]["OMP_THREAD_LIMIT"], "1")
+
+    def test_missing_tesseract_has_explicit_error(self):
+        from unittest.mock import patch
+        with patch("dayone.live_ocr.subprocess.run", side_effect=FileNotFoundError("tesseract")):
+            with self.assertRaises(ExtractionError) as caught:
+                TesseractOcrReader().read(Path("page.png"))
+        self.assertEqual(caught.exception.code, "OCR_DEPENDENCY_MISSING")
 
 
 if __name__ == "__main__":

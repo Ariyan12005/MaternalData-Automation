@@ -1,0 +1,27 @@
+{
+  "_note": "Values were read by eye from the specimen images and have NOT been verified by a second person. Verify them before trusting any accuracy number. 'null' means the value is not on the page (blank cell / no such label), so any KNOWN value for it counts as wrong. Values use the same normalized form as the draft (digits only for registry_file_number, ISO dates, days for gestational age). This file must never be imported by dayone/.",
+  "cases": [
+    {
+      "id": "patient-1/pages-01-03",
+      "pages": [
+        "data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+        "data/Paper Registry/dossiers_specimen_10_patientes-02.png",
+        "data/Paper Registry/dossiers_specimen_10_patientes-03.png"
+      ],
+      "expected": {
+        "registry_file_number": "2026823001",
+        "midwife_patient_code": null,
+        "facility_name": "CSCA Al Wifaq",
+        "last_menstrual_period": "2025-04-26",
+        "visit_date": "2026-01-18",
+        "gestational_age_days": 266,
+        "weight_kg": 66.8,
+        "systolic_bp_mmhg": 110,
+        "diastolic_bp_mmhg": 60,
+        "fundal_height_cm": 34,
+        "syphilis_test": null,
+        "hiv_test": null
+      }
+    }
+  ]
+}

@@ -7,10 +7,13 @@ labelled values.  Everything else is sent to the existing review screen as
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 import re
+import subprocess
 import threading
 import math
 import struct
@@ -33,8 +36,38 @@ class OcrLine:
     page_ref: str | None = None
 
 
+class TesseractOcrReader:
+    """Default local OCR: fast, small, and word-level output with page coordinates."""
+
+    name, version = "tesseract", "tesseract-fra-eng-psm11-v1"
+
+    def read(self, image_path: Path) -> list[OcrLine]:
+        try:
+            result = subprocess.run(
+                ["tesseract", str(image_path), "stdout", "-l", "fra+eng", "--psm", "11", "tsv"],
+                check=True, capture_output=True, text=True, timeout=30,
+                # One OpenMP thread per process: pages are read in parallel instead (see extract()).
+                env={**os.environ, "OMP_THREAD_LIMIT": "1"},
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ExtractionError("OCR_DEPENDENCY_MISSING", "Tesseract n'est pas disponible.") from exc
+        lines: list[OcrLine] = []
+        for row in result.stdout.splitlines()[1:]:
+            parts = row.split("\t")
+            if len(parts) != 12 or not parts[11].strip():
+                continue
+            try:
+                confidence = float(parts[10]) / 100
+            except ValueError:
+                continue
+            lines.append(OcrLine(parts[11].strip(), max(0.0, min(1.0, confidence)), int(parts[6]), int(parts[7])))
+        return lines
+
+
 class PaddleOcrReader:
     """Local PP-OCR detection/recognition only; no VLM or fallback engine."""
+
+    name, version = "paddleocr", "paddleocr-ppocrv6-v1"
 
     def __init__(self, engine=None):
         self._engine = engine
@@ -172,13 +205,14 @@ def _parse_document_fields(lines: list[OcrLine], page_refs: list[str]) -> dict:
     fields = {spec.name: _review_field(spec, page_refs[0]) for spec in schema.DOCUMENT_FIELDS}
     page_ref = next((ref for ref in page_refs if _section(ref) == "cover"), None)
     if page_ref:
-        candidate = _candidate([line for line in lines if line.page_ref == page_ref], r"(?:n[°o]|num[eé]ro)\s*(?:de\s*)?(?:la\s*)?fiche\s*[:#-]?\s*\d{3,12}")
+        label = r"(?:n[°o]|num[eé]ro)\s*(?:de\s*)?(?:la\s*)?fiche\s*[:：#-]?\s*"
+        candidate = _candidate([line for line in lines if line.page_ref == page_ref], label + r"\d")
         if candidate:
-            digits = re.findall(r"\d{3,12}", candidate.text)
-            if digits:
-                spec = schema.FIELDS["registry_file_number"]
-                fields[spec.name] = _field(spec, raw_text=digits[-1], value=digits[-1],
-                                           confidence=candidate.confidence, status="KNOWN", page_ref=page_ref)
+            # Keep the whole number: "2026-823-001" is one value, not three groups.
+            match = re.search(label + r"(\d[\d\s-]*\d)\s*$", candidate.text, re.IGNORECASE)
+            known = match and _known_from_raw("registry_file_number", match.group(1), candidate.confidence, page_ref)
+            if known:
+                fields["registry_file_number"] = known
     return fields
 
 
@@ -274,21 +308,23 @@ def _parse_specimen_latest_visit(lines: list[OcrLine], page_ref: str) -> dict:
 class LiveOcrExtractor:
     """Real-photo extractor whose output is validated by the existing schema."""
 
-    name = "paddleocr"
-
     def __init__(self, repo_root: Path, reader=None):
         self.repo_root = Path(repo_root).resolve()
-        self.reader = reader or PaddleOcrReader()
+        self.reader = reader or TesseractOcrReader()
+        self.name = getattr(self.reader, "name", "live-ocr")
+        self.version = getattr(self.reader, "version", "live-ocr-v1")
 
     def extract(self, page_refs: list[str]) -> dict:
-        all_lines: list[OcrLine] = []
-        for ref in page_refs:
-            image_path = (self.repo_root / ref).resolve()
+        image_paths = [(self.repo_root / ref).resolve() for ref in page_refs]
+        for image_path in image_paths:
             assess_photo(image_path)
-            all_lines.extend(
-                OcrLine(line.text, line.confidence, line.left, line.top, ref)
-                for line in self.reader.read(image_path)
-            )
+        # Pages are independent, so they are read in parallel; map() keeps page order.
+        with ThreadPoolExecutor(max(1, min(len(image_paths), os.cpu_count() or 1))) as pool:
+            page_results = list(pool.map(self.reader.read, image_paths))
+        all_lines: list[OcrLine] = [
+            OcrLine(line.text, line.confidence, line.left, line.top, ref)
+            for ref, lines in zip(page_refs, page_results) for line in lines
+        ]
         pii_labels = ("cin", "nom", "prénom", "adresse", "téléphone", "mari")
         pii_detected = [
             {"category": label, "action": "NOT_EXTRACTED"}
@@ -299,7 +335,7 @@ class LiveOcrExtractor:
             "layout_id": schema.LAYOUT_ID,
             "notes": "OCR local : toute valeur incertaine nécessite une validation humaine.",
             "extraction": {
-                "extractor": self.name, "extractor_version": "paddleocr-ppocrv6-v1",
+                "extractor": self.name, "extractor_version": self.version,
                 "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             },
             "pages": [{"page_ref": ref, "section": _section(ref)} for ref in page_refs],
