@@ -162,3 +162,21 @@ downstream SYNCED export remain outside this implementation. The HTTP simulator 
 `FixtureExtractor` are mocks. Fatma's worker is real when `DAYONE_EXTRACTOR=external`
 and it calls claim/media/result. Aymane's Meta Cloud API remains a separate transport
 in front of `POST /api/whatsapp/uploads`.
+
+## Extraction recovery update
+
+Workers can POST `/api/extraction/jobs/JOB-000001/failure` with `token`, integer
+`expected_revision`, and `code`: ILLEGIBLE_IMAGE, UNSUPPORTED_LAYOUT, or
+EXTRACTION_FAILED. Arbitrary exception/clinical text is not stored. Active lease,
+revision and document state are checked; failed callback retries are idempotent.
+The record becomes PROCESSING_FAILED. Retryable outages should retain PENDING_AI
+and retry the lease instead of reporting permanent failure.
+
+Staff may explicitly start manual entry from PENDING_AI or PROCESSING_FAILED,
+using the existing revision-protected API/UI. Late worker results or failures
+cannot overwrite the manual draft. This works without an external model.
+
+`python -m dayone.check` performs a read-only readiness check using local .env and
+reports safe error categories; it never initializes collections or writes data.
+It cannot validate write access or all stored ciphertext; use LiveAtlasTest for
+full validation on a dedicated database.

@@ -192,3 +192,18 @@ Back up this private file securely. Do not commit it or share its contents.
 Browser login is `dayone`, with the `DAYONE_API_TOKEN` value in your local `.env`.
 The wizard configures external extraction; Fatma's worker is still required.
 Setup saves configuration; it does not prove live Atlas connectivity.
+## Check Atlas and recover extraction failures
+
+```powershell
+python -m dayone.check
+```
+
+This read-only check loads your private configuration, checks Atlas connectivity,
+database read permissions and sample encrypted payloads without printing secrets.
+Missing settings are reported by name. Use `python -m dayone.setup` to configure
+Atlas first. Full write/transaction verification still uses the dedicated test.
+
+Back-office can now start manual entry while a closed scan waits in PENDING_AI,
+even without Fatma's worker. This invalidates late extraction callbacks through
+the document revision. The worker can report permanent failures through the
+new authenticated `/api/extraction/jobs/<job_id>/failure` endpoint.

@@ -259,6 +259,30 @@ class DayOneService:
             db.execute("UPDATE jobs SET state='DONE' WHERE job_id=?", (job_id,))
         return {"ok": True, "replayed": False}
 
+    def fail_job(self, job_id, *, token, expected_revision, code):
+        if type(expected_revision) is not int:
+            raise Invalid("REVISION_REQUIRED", "Provide integer expected_revision")
+        if code not in ("ILLEGIBLE_IMAGE", "UNSUPPORTED_LAYOUT", "EXTRACTION_FAILED"):
+            raise Invalid("INVALID_FAILURE", "Use an allowed extraction failure code")
+        now = self.clock()
+        with self.store.tx() as db:
+            job = db.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+            if job is None or not isinstance(token, str) or not _secret_equal(job["token"], token):
+                raise Forbidden("INVALID_JOB", "Invalid extraction lease")
+            if job["state"] == "FAILED":
+                return {"ok": True, "replayed": True}
+            document = self._load_document(db, job["document_id"])
+            self._check_revision(document, expected_revision)
+            if (job["state"] != "LEASED" or document["revision"] != job["revision"]
+                    or document["status"] != "PENDING_AI"
+                    or datetime.fromisoformat(job["lease_until"]) <= now):
+                raise Conflict("STALE_JOB", "Extraction lease expired or document changed")
+            db.execute("UPDATE jobs SET state='FAILED' WHERE job_id=?", (job_id,))
+            db.execute("UPDATE documents SET failure_reason=?, revision=revision+1 WHERE document_id=?",
+                       (code, job["document_id"]))
+            self._set_status(db, job["document_id"], "PROCESSING_FAILED", now, detail={"code": code})
+        return {"ok": True, "replayed": False}
+
     # ------------------------------------------------------------------ ingest
 
     def ingest_photo(self, *, sender_id: str, message_id: str, media_ref: str, group_id: str | None = None) -> dict:
@@ -401,7 +425,7 @@ class DayOneService:
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
             self._check_revision(document, expected_revision)
-            if document["status"] != "PROCESSING_FAILED":
+            if document["status"] not in ("PROCESSING_FAILED", "PENDING_AI"):
                 raise Conflict("NOT_FAILED", "La saisie manuelle est réservée aux dossiers en échec d'extraction.")
             self._save_draft(db, document_id, schema.manual_draft(self._page_refs(db, document_id), _iso(now)), now)
             self._event(db, document_id, "MANUAL_ENTRY_STARTED", reviewer, now, {})

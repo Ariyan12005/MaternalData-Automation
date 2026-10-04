@@ -407,6 +407,7 @@ function renderDocumentHeader(d) {
   const extraction = d.draft?.extraction;
   return el("div", { class: "doc-header" },
     el("h2", {}, doc.document_id), chip(doc.status),
+    doc.status === "PENDING_AI" ? button("Saisie manuelle", startManualEntry, "small") : null,
     el("span", { class: `chip grouping-${doc.grouping_status}` },
       doc.grouping_status === "PROVISIONAL" ? "Regroupement provisoire" : "Regroupement confirmé"),
     el("span", { class: "muted" }, `rév. ${doc.revision}`),

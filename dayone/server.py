@@ -84,6 +84,8 @@ class Api:
                 b.get("document_id") if isinstance(b.get("document_id"), str) else None)),
             ("POST", r"/api/extraction/jobs/(JOB-\d+)/result", lambda m, q, b, r: s.complete_job(
                 m[1], token=b.get("token"), draft=b.get("draft"), expected_revision=b.get("expected_revision"))),
+            ("POST", r"/api/extraction/jobs/(JOB-\d+)/failure", lambda m, q, b, r: s.fail_job(
+                m[1], token=b.get("token"), expected_revision=b.get("expected_revision"), code=b.get("code"))),
             ("POST", r"/api/documents/(DOC-\d+)/close", lambda m, q, b, r: s.close_capture(m[1]) or {"ok": True}),
             ("GET", r"/api/system", lambda m, q, b, r: s.system_info()),
             ("POST", r"/api/system/ai", lambda m, q, b, r: s.set_ai_available(bool(b.get("available")))),
