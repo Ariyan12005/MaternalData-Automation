@@ -193,15 +193,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db", default=str(REPO_ROOT / "var" / "dayone.sqlite3"))
     parser.add_argument("--window", type=int, default=8, help="multipage grouping window in seconds")
-    parser.add_argument("--extractor", choices=("fixture", "paddle"), default="fixture",
-                        help="fixture for the stable demo; paddle for local real-photo OCR")
+    parser.add_argument("--extractor", choices=("fixture", "tesseract"), default="fixture",
+                        help="fixture for the stable demo; tesseract for fast local real-photo OCR")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     service = build_service(args.db, grouping_window_seconds=args.window, extractor_mode=args.extractor)
     # Fixture mode includes a pre-confirmed history for the visual demo.  Real
     # OCR always requires a human review, so it must start with an empty demo.
-    if args.extractor == "paddle":
+    if args.extractor == "tesseract":
         service.reset_demo(with_history=False)
     else:
         service.ensure_seed()

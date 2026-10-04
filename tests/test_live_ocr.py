@@ -28,20 +28,18 @@ class LiveOcrTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_unclear_clinical_values_go_to_review(self):
-        extractor = LiveOcrExtractor(self.root, reader=FakeReader([OcrLine("TA", 0.99)]), numeric_reader=FakeReader([]))
+        extractor = LiveOcrExtractor(self.root, reader=FakeReader([OcrLine("TA", 0.99)]))
         from unittest.mock import patch
-        with patch("dayone.live_ocr.assess_photo"), patch("dayone.live_ocr.preprocess_photo"):
+        with patch("dayone.live_ocr.assess_photo"):
             draft = extractor.extract(["data/Paper Registry/1-4.jpg"])
         self.assertEqual(schema.validate_draft(draft), [])
         self.assertEqual(draft["encounters"][0]["fields"]["visit_date"]["field_status"], "NEEDS_REVIEW")
         self.assertEqual(draft["encounters"][0]["fields"]["systolic_bp_mmhg"]["value"], None)
 
     def test_clear_bp_is_known_but_other_values_stay_reviewable(self):
-        extractor = LiveOcrExtractor(
-            self.root, reader=FakeReader([OcrLine("TA 12/7", 0.97)]), numeric_reader=FakeReader([OcrLine("12/7", 0.95)]),
-        )
+        extractor = LiveOcrExtractor(self.root, reader=FakeReader([OcrLine("TA 12/7", 0.97)]))
         from unittest.mock import patch
-        with patch("dayone.live_ocr.assess_photo"), patch("dayone.live_ocr.preprocess_photo"):
+        with patch("dayone.live_ocr.assess_photo"):
             draft = extractor.extract(["data/Paper Registry/1-4.jpg"])
         fields = draft["encounters"][0]["fields"]
         self.assertEqual(fields["systolic_bp_mmhg"]["value"], 120)

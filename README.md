@@ -53,20 +53,17 @@ python -m unittest discover -s tests -v
 
 The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 first-trimester visits). Use **Réinitialiser la démo** to start over.
 
-### Local real-photo OCR (PaddleOCR)
+### Fast local real-photo OCR (Tesseract)
 
-The stable demo remains fixture-driven. On an Apple Silicon development machine
-where PaddleOCR is installed in `.venv-paddle312`, run real-photo OCR with:
+The stable demo remains fixture-driven. Run the fast local OCR with:
 
 ```powershell
-source .venv-paddle312/bin/activate
-python -m dayone --extractor paddle --db var/dayone-paddle.sqlite3
+python -m dayone --extractor tesseract --db var/dayone-tesseract.sqlite3
 ```
 
 It first rejects very small, dark, or overexposed images with `RETAKE_REQUIRED`.
 For readable labelled values it returns `KNOWN`; unclear handwritten values are
-returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person. The
-Paddle environment and downloaded models are local-only and must not be committed.
+returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person.
 
 ### Demo script
 
@@ -99,7 +96,7 @@ Paddle environment and downloaded models are local-only and must not be committe
 | WhatsApp inbound | Browser phone panel posts `{sender_id, message_id, media_ref}` to `/api/whatsapp/messages`. Images must already be in `data/Paper Registry/` | Not started: Meta webhook format, signature check, media download |
 | WhatsApp outbound | Acknowledgments stored in the database and shown in the simulated thread | Not started: sending through the Cloud API |
 | Senders | One seeded demo number mapped to *C/S Sidi Smail* | Not started: sender registration |
-| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` uses local PaddleOCR for real registry photos and sends unclear handwriting to review | OCR is local only; WhatsApp media download is not started |
+| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` uses fast local Tesseract for real registry photos and sends unclear handwriting to review | OCR is local only; WhatsApp media download is not started |
 | AI outage | "IA disponible" toggle | Would be a real extractor timeout or failure |
 
 ### Open blockers and limitations
