@@ -1,0 +1,432 @@
+{
+  "document": {
+    "document_id": "DOC-000001",
+    "status": "NEEDS_REVIEW",
+    "grouping_status": "PROVISIONAL",
+    "sender_id": "whatsapp:+212600000001",
+    "facility_id": "FAC-SIDI-SMAIL",
+    "created_at": "2026-10-04T01:41:54+00:00",
+    "last_page_at": "2026-10-04T01:41:54+00:00",
+    "updated_at": "2026-10-04T01:42:11+00:00",
+    "revision": 1,
+    "failure_reason": null
+  },
+  "next_step": "FIELD",
+  "pages": [
+    {
+      "page_id": "PAGE-000001",
+      "position": 1,
+      "media_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+      "received_at": "2026-10-04T01:41:54+00:00",
+      "source_message_id": "example-cover"
+    }
+  ],
+  "draft": {
+    "schema_version": "1.0",
+    "layout_id": "ma-fiche-surveillance-grossesse-v1",
+    "notes": "OCR local : toute valeur incertaine nécessite une validation humaine.",
+    "extraction": {
+      "extractor": "paddleocr",
+      "extractor_version": "paddleocr-ppocrv6-v1",
+      "processed_at": "2026-10-04T01:42:11+00:00"
+    },
+    "pages": [
+      {
+        "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+        "section": "cover"
+      }
+    ],
+    "pii_detected": [
+      {
+        "category": "nom",
+        "action": "NOT_EXTRACTED"
+      },
+      {
+        "category": "prénom",
+        "action": "NOT_EXTRACTED"
+      }
+    ],
+    "document_fields": {
+      "registry_file_number": {
+        "raw_text": "007",
+        "value": "007",
+        "unit": null,
+        "confidence": 0.9062854647636414,
+        "field_status": "KNOWN",
+        "validation_flags": [],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      },
+      "midwife_patient_code": {
+        "raw_text": null,
+        "value": null,
+        "unit": null,
+        "confidence": null,
+        "field_status": "NEEDS_REVIEW",
+        "validation_flags": [
+          "OCR_VALUE_UNCLEAR"
+        ],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      },
+      "facility_name": {
+        "raw_text": null,
+        "value": null,
+        "unit": null,
+        "confidence": null,
+        "field_status": "NEEDS_REVIEW",
+        "validation_flags": [
+          "OCR_VALUE_UNCLEAR"
+        ],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      },
+      "last_menstrual_period": {
+        "raw_text": null,
+        "value": null,
+        "unit": null,
+        "confidence": null,
+        "field_status": "NEEDS_REVIEW",
+        "validation_flags": [
+          "OCR_VALUE_UNCLEAR"
+        ],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      }
+    },
+    "encounters": [
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "MANUAL",
+        "fields": {
+          "visit_date": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": null,
+            "value": null,
+            "unit": "days",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": null,
+            "value": null,
+            "unit": "kg",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": null,
+            "value": null,
+            "unit": "mmHg",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": null,
+            "value": null,
+            "unit": "mmHg",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": null,
+            "value": null,
+            "unit": "cm",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      }
+    ]
+  },
+  "review": {
+    "blocking": [
+      {
+        "scope": "document",
+        "encounter_index": null,
+        "slot": null,
+        "field": "midwife_patient_code",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "document",
+        "encounter_index": null,
+        "slot": null,
+        "field": "facility_name",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "document",
+        "encounter_index": null,
+        "slot": null,
+        "field": "last_menstrual_period",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "visit_date",
+        "reason": "REQUIRED_MISSING"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "gestational_age_days",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "weight_kg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "systolic_bp_mmhg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "diastolic_bp_mmhg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "fundal_height_cm",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "syphilis_test",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "field": "hiv_test",
+        "reason": "NEEDS_REVIEW"
+      }
+    ],
+    "candidates": [],
+    "suggested_patient_id": null,
+    "selection": null,
+    "selection_warnings": [],
+    "encounter_matches": [
+      {
+        "encounter_index": 0,
+        "slot": "MANUAL",
+        "visit_date": null,
+        "outcome": "MISSING_DATE",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      }
+    ],
+    "next_step": "FIELD"
+  },
+  "registration": null,
+  "events": [
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T01:41:54+00:00",
+      "detail": {
+        "from": null,
+        "to": "CAPTURED"
+      }
+    },
+    {
+      "type": "PAGE_RECEIVED",
+      "actor": "system",
+      "at": "2026-10-04T01:41:54+00:00",
+      "detail": {
+        "page_id": "PAGE-000001",
+        "position": 1
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T01:41:54+00:00",
+      "detail": {
+        "from": "CAPTURED",
+        "to": "PENDING_AI"
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T01:42:11+00:00",
+      "detail": {
+        "from": "PENDING_AI",
+        "to": "AI_PROCESSED"
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T01:42:11+00:00",
+      "detail": {
+        "from": "AI_PROCESSED",
+        "to": "NEEDS_REVIEW"
+      }
+    }
+  ],
+  "move_targets": []
+}

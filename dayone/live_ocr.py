@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import re
-import subprocess
+import threading
+import math
+import struct
 
 from . import schema
 from .extraction import ExtractionError
@@ -31,27 +33,55 @@ class OcrLine:
     page_ref: str | None = None
 
 
-class TesseractOcrReader:
-    """The single fast local OCR engine used by the hackathon demo."""
+class PaddleOcrReader:
+    """Local PP-OCR detection/recognition only; no VLM or fallback engine."""
+
+    def __init__(self, engine=None):
+        self._engine = engine
+        self._lock = threading.Lock()
+
+    def _load_engine(self):
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError as exc:
+            raise ExtractionError("OCR_DEPENDENCY_MISSING", "PaddleOCR nécessite l'environnement Python 3.12 du projet.") from exc
+        try:
+            return PaddleOCR(
+                text_detection_model_name="PP-OCRv6_medium_det",
+                text_recognition_model_name="PP-OCRv6_medium_rec",
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                device="cpu",
+                enable_mkldnn=False,
+            )
+        except Exception as exc:
+            raise ExtractionError("OCR_INITIALIZATION_FAILED", "Impossible de charger les modèles locaux PaddleOCR.") from exc
 
     def read(self, image_path: Path) -> list[OcrLine]:
-        try:
-            result = subprocess.run(
-                ["tesseract", str(image_path), "stdout", "-l", "fra+eng", "--psm", "11", "tsv"],
-                check=True, capture_output=True, text=True, timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise ExtractionError("OCR_DEPENDENCY_MISSING", "Tesseract n'est pas disponible.") from exc
-        lines: list[OcrLine] = []
-        for row in result.stdout.splitlines()[1:]:
-            parts = row.split("\t")
-            if len(parts) != 12 or not parts[11].strip():
-                continue
+        # Paddle predictors are shared across requests and must not run concurrently.
+        with self._lock:
+            if self._engine is None:
+                self._engine = self._load_engine()
             try:
-                confidence = float(parts[10]) / 100
-            except ValueError:
-                continue
-            lines.append(OcrLine(parts[11].strip(), max(0.0, min(1.0, confidence)), int(parts[6]), int(parts[7])))
+                results = list(self._engine.predict(str(image_path)))
+            except Exception as exc:
+                raise ExtractionError("OCR_FAILED", "PaddleOCR n'a pas pu lire cette page.") from exc
+        lines: list[OcrLine] = []
+        try:
+            for result in results:
+                texts, scores, boxes = result["rec_texts"], result["rec_scores"], result["rec_polys"]
+                if not (len(texts) == len(scores) == len(boxes)):
+                    raise ValueError("OCR result lengths differ")
+                for text, score, box in zip(texts, scores, boxes):
+                    confidence = float(score)
+                    if not math.isfinite(confidence) or not 0 <= confidence <= 1 or not text.strip():
+                        continue
+                    left = int(min(point[0] for point in box))
+                    top = int(min(point[1] for point in box))
+                    lines.append(OcrLine(text.strip(), confidence, left, top))
+        except (KeyError, TypeError, ValueError, IndexError) as exc:
+            raise ExtractionError("OCR_INVALID_RESULT", "Résultat PaddleOCR invalide; vérification manuelle requise.") from exc
         return lines
 
 
@@ -59,6 +89,15 @@ def assess_photo(image_path: Path) -> None:
     """Raise a retake request before OCR when a photo is clearly unusable."""
     if image_path.stat().st_size < MIN_IMAGE_BYTES:
         raise ExtractionError("RETAKE_REQUIRED", "Photo trop petite ou incomplète. Reprenez la photo.")
+    # PNG dimensions remain checked on the normal path without Pillow.
+    with image_path.open("rb") as stream:
+        header = stream.read(24)
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        if len(header) != 24 or header[12:16] != b"IHDR":
+            raise ExtractionError("RETAKE_REQUIRED", "Image illisible. Reprenez la photo.")
+        width, height = struct.unpack(">II", header[16:24])
+        if min(width, height) < MIN_IMAGE_SIDE:
+            raise ExtractionError("RETAKE_REQUIRED", "Photo trop petite. Rapprochez-vous de la fiche.")
     try:
         from PIL import Image, ImageStat
         with Image.open(image_path) as image:
@@ -73,7 +112,7 @@ def assess_photo(image_path: Path) -> None:
             if mean > 245:
                 raise ExtractionError("RETAKE_REQUIRED", "Photo surexposée. Évitez le reflet et réessayez.")
     except ImportError:
-        # Tesseract remains usable without Pillow; size-based retake protection
+        # PaddleOCR remains usable without Pillow; size-based retake protection
         # above still applies on a bare Python installation.
         return
     except ExtractionError:
@@ -130,15 +169,15 @@ def _candidate(lines: list[OcrLine], pattern: str) -> OcrLine | None:
 
 
 def _parse_document_fields(lines: list[OcrLine], page_refs: list[str]) -> dict:
-    fields = {spec.name: _field(spec) for spec in schema.DOCUMENT_FIELDS}
+    fields = {spec.name: _review_field(spec, page_refs[0]) for spec in schema.DOCUMENT_FIELDS}
     page_ref = next((ref for ref in page_refs if _section(ref) == "cover"), None)
     if page_ref:
-        candidate = _candidate(lines, r"(?:n[°o]|num[eé]ro)\s*(?:de\s*)?(?:la\s*)?fiche\s*[:#-]?\s*\d{3,12}")
+        candidate = _candidate([line for line in lines if line.page_ref == page_ref], r"(?:n[°o]|num[eé]ro)\s*(?:de\s*)?(?:la\s*)?fiche\s*[:#-]?\s*\d{3,12}")
         if candidate:
             digits = re.findall(r"\d{3,12}", candidate.text)
             if digits:
                 spec = schema.FIELDS["registry_file_number"]
-                fields[spec.name] = _field(spec, raw_text=candidate.text, value=digits[-1],
+                fields[spec.name] = _field(spec, raw_text=digits[-1], value=digits[-1],
                                            confidence=candidate.confidence, status="KNOWN", page_ref=page_ref)
     return fields
 
@@ -149,16 +188,14 @@ def _parse_encounter(lines: list[OcrLine], page_refs: list[str]) -> dict:
         return _parse_specimen_latest_visit(lines, specimen_page)
 
     clinical_ref = next((ref for ref in page_refs if _section(ref) == "current_pregnancy"), page_refs[0])
-    fields = {spec.name: _field(spec) for spec in schema.ENCOUNTER_FIELDS}
-    # A clinical page was received, but OCR did not safely identify a value: request review.
-    if _section(clinical_ref) == "current_pregnancy":
-        fields = {spec.name: _review_field(spec, clinical_ref) for spec in schema.ENCOUNTER_FIELDS}
-
+    fields = {spec.name: _review_field(spec, clinical_ref) for spec in schema.ENCOUNTER_FIELDS}
     # Moroccan paper forms often write TA as ``12/7`` (cmHg), not ``120/70``.
     bp_pattern = r"\b(\d{2,3})\s*[/|]\s*(\d{1,3})\b"
     # A historical date such as 12/11/2022 must never be mistaken for TA 12/11.
     bp = next((line for line in lines
-               if not re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", line.text)
+               if _section(clinical_ref) == "current_pregnancy"
+               and line.page_ref == clinical_ref
+               and re.fullmatch(r"\s*(?:TA|BP|tension)\s*[:=]?\s*\d{2,3}\s*/\s*\d{1,3}\s*(?:mmHg|cmHg)?\s*", line.text, re.IGNORECASE)
                and line.confidence >= MIN_KNOWN_CONFIDENCE
                and re.search(bp_pattern, line.text)), None)
     if bp:
@@ -184,7 +221,7 @@ def _specimen_row(lines: list[OcrLine], page_ref: str, *, top: int, minimum_left
     by coordinates. This avoids inventing a relationship between a left-column
     label and a value from another visit column.
     """
-    hits = [line for line in lines if line.page_ref == page_ref and line.left >= minimum_left and abs(line.top - top) <= 28]
+    hits = [line for line in lines if line.page_ref == page_ref and minimum_left <= line.left < 1540 and abs(line.top - top) <= 20]
     if not hits:
         return None
     hits.sort(key=lambda line: line.left)
@@ -205,8 +242,8 @@ def _known_from_raw(name: str, raw_text: str, confidence: float, page_ref: str) 
 def _parse_specimen_latest_visit(lines: list[OcrLine], page_ref: str) -> dict:
     fields = {spec.name: _review_field(spec, page_ref) for spec in schema.ENCOUNTER_FIELDS}
     rows = {
-        "visit_date": (450, r"\d{1,2}/\d{1,2}/\d{2,4}"),
-        "gestational_age_days": (550, r"\d{1,2}\s*SA"),
+        "visit_date": (450, r"\d{1,2}/\d{1,2}/\d{4}"),
+        "gestational_age_days": (550, r"\d{1,2}\s*SA(?:\s*\+\s*[0-6]\s*j?)?"),
         "weight_kg": (650, r"\d{1,3}(?:[.,]\d+)?"),
         "fundal_height_cm": (997, r"\d{1,2}"),
     }
@@ -215,7 +252,7 @@ def _parse_specimen_latest_visit(lines: list[OcrLine], page_ref: str) -> dict:
         if candidate is None:
             continue
         raw, confidence = candidate
-        match = re.search(pattern, raw, re.IGNORECASE)
+        match = re.fullmatch(pattern, raw, re.IGNORECASE)
         if match:
             known = _known_from_raw(name, match.group(0), confidence, page_ref)
             if known:
@@ -223,7 +260,7 @@ def _parse_specimen_latest_visit(lines: list[OcrLine], page_ref: str) -> dict:
     bp = _specimen_row(lines, page_ref, top=700, minimum_left=1400)
     if bp:
         raw, confidence = bp
-        match = re.search(r"\b(\d{2,3})\s*[/|]\s*(\d{1,3})\b", raw)
+        match = re.fullmatch(r"(\d{2,3})\s*/\s*(\d{1,3})", raw)
         if match and confidence >= MIN_KNOWN_CONFIDENCE:
             systolic, diastolic = int(match.group(1)), int(match.group(2))
             if not schema.FIELDS["systolic_bp_mmhg"].range_error(systolic) and not schema.FIELDS["diastolic_bp_mmhg"].range_error(diastolic):
@@ -237,11 +274,11 @@ def _parse_specimen_latest_visit(lines: list[OcrLine], page_ref: str) -> dict:
 class LiveOcrExtractor:
     """Real-photo extractor whose output is validated by the existing schema."""
 
-    name = "tesseract"
+    name = "paddleocr"
 
     def __init__(self, repo_root: Path, reader=None):
         self.repo_root = Path(repo_root).resolve()
-        self.reader = reader or TesseractOcrReader()
+        self.reader = reader or PaddleOcrReader()
 
     def extract(self, page_refs: list[str]) -> dict:
         all_lines: list[OcrLine] = []
@@ -262,7 +299,7 @@ class LiveOcrExtractor:
             "layout_id": schema.LAYOUT_ID,
             "notes": "OCR local : toute valeur incertaine nécessite une validation humaine.",
             "extraction": {
-                "extractor": self.name, "extractor_version": "tesseract-fast-v1",
+                "extractor": self.name, "extractor_version": "paddleocr-ppocrv6-v1",
                 "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             },
             "pages": [{"page_ref": ref, "section": _section(ref)} for ref in page_refs],

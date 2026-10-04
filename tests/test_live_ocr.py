@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dayone import schema
 from dayone.extraction import ExtractionError
-from dayone.live_ocr import LiveOcrExtractor, OcrLine, _section
+from dayone.live_ocr import LiveOcrExtractor, OcrLine, PaddleOcrReader, _section
 
 
 class FakeReader:
@@ -82,6 +82,79 @@ class LiveOcrTest(unittest.TestCase):
         self.assertEqual(fields["gestational_age_days"]["value"], 266)
         self.assertEqual(fields["weight_kg"]["value"], 66.8)
         self.assertEqual(fields["systolic_bp_mmhg"]["value"], 110)
+
+    def test_malformed_cells_never_supply_partial_values(self):
+        from unittest.mock import patch
+        ref = "data/Paper Registry/dossiers_specimen_10_patientes-03.png"
+        for text, top, name in [
+            ("14/09/2024/7", 450, "visit_date"),
+            ("72.4?", 650, "weight_kg"),
+            ("120/80/2024", 700, "systolic_bp_mmhg"),
+            ("31 SA + 9 j", 550, "gestational_age_days"),
+            ("29 30", 997, "fundal_height_cm"),
+        ]:
+            with self.subTest(text=text), patch("dayone.live_ocr.assess_photo"):
+                draft = LiveOcrExtractor(self.root, FakeReader([OcrLine(text, 0.99, 1420, top)])).extract([ref])
+                field = draft["encounters"][0]["fields"][name]
+                self.assertIsNone(field["value"])
+                self.assertEqual(field["field_status"], "NEEDS_REVIEW")
+
+    def test_low_confidence_token_blocks_entire_cell(self):
+        from unittest.mock import patch
+        ref = "data/Paper Registry/dossiers_specimen_10_patientes-03.png"
+        lines = [OcrLine("31", 0.99, 1420, 550), OcrLine("SA", 0.40, 1460, 550)]
+        with patch("dayone.live_ocr.assess_photo"):
+            draft = LiveOcrExtractor(self.root, FakeReader(lines)).extract([ref])
+        self.assertIsNone(draft["encounters"][0]["fields"]["gestational_age_days"]["value"])
+
+    def test_unlabelled_number_pair_is_not_blood_pressure(self):
+        from unittest.mock import patch
+        with patch("dayone.live_ocr.assess_photo"):
+            draft = LiveOcrExtractor(self.root, FakeReader([OcrLine("12/8", 0.99)])).extract(["data/Paper Registry/1-4.jpg"])
+        self.assertIsNone(draft["encounters"][0]["fields"]["systolic_bp_mmhg"]["value"])
+
+    def test_cover_candidate_from_other_page_is_rejected(self):
+        from unittest.mock import patch
+        class Reader:
+            def read(self, path):
+                return [] if path.name.endswith("01.png") else [OcrLine("N° fiche 987654", 0.99)]
+        refs = [f"data/Paper Registry/dossiers_specimen_10_patientes-{n:02}.png" for n in (1, 2)]
+        with patch("dayone.live_ocr.assess_photo"):
+            draft = LiveOcrExtractor(self.root, Reader()).extract(refs)
+        self.assertIsNone(draft["document_fields"]["registry_file_number"]["value"])
+
+    def test_postpartum_bp_does_not_become_antenatal_measurement(self):
+        from unittest.mock import patch
+        ref = "data/Paper Registry/dossiers_specimen_10_patientes-05.png"
+        with patch("dayone.live_ocr.assess_photo"):
+            draft = LiveOcrExtractor(self.root, FakeReader([OcrLine("TA 13/8", 0.99)])).extract([ref])
+        self.assertIsNone(draft["encounters"][0]["fields"]["systolic_bp_mmhg"]["value"])
+
+    def test_paddle_adapter_preserves_text_score_and_coordinates(self):
+        class Engine:
+            def predict(self, path):
+                return [{"rec_texts": ["31 SA", "invalid"],
+                         "rec_scores": [0.96, float("nan")],
+                         "rec_polys": [[[1420, 548], [1490, 548], [1490, 570], [1420, 570]],
+                                       [[0, 0], [1, 0], [1, 1], [0, 1]]]}]
+        reader = PaddleOcrReader(Engine())
+        self.assertEqual(reader.read(Path("unused.png")), [OcrLine("31 SA", 0.96, 1420, 548)])
+
+    def test_paddle_inference_failure_has_explicit_error(self):
+        class Engine:
+            def predict(self, path):
+                raise RuntimeError("failure")
+        with self.assertRaises(ExtractionError) as caught:
+            PaddleOcrReader(Engine()).read(Path("unused.png"))
+        self.assertEqual(caught.exception.code, "OCR_FAILED")
+
+    def test_paddle_mismatched_results_are_rejected(self):
+        class Engine:
+            def predict(self, path):
+                return [{"rec_texts": ["31 SA"], "rec_scores": [], "rec_polys": []}]
+        with self.assertRaises(ExtractionError) as caught:
+            PaddleOcrReader(Engine()).read(Path("unused.png"))
+        self.assertEqual(caught.exception.code, "OCR_INVALID_RESULT")
 
 
 if __name__ == "__main__":

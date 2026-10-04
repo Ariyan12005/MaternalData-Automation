@@ -5,3 +5,5 @@ var/
 .idea/
 .venv-paddle/
 .venv-paddle312/
+
+.venv/

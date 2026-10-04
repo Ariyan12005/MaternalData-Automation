@@ -53,15 +53,42 @@ python -m unittest discover -s tests -v
 
 The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 first-trimester visits). Use **Réinitialiser la démo** to start over.
 
-### Fast local real-photo OCR (Tesseract)
+### Local real-photo OCR (PaddleOCR)
 
-The stable demo remains fixture-driven. Run the fast local OCR with:
+Install the local OCR and image-quality dependencies in a project environment, then activate it:
 
-```powershell
-python -m dayone --extractor tesseract --db var/dayone-tesseract.sqlite3
+```sh
+python3.12 -m venv .venv-paddle312
+source .venv-paddle312/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-It first rejects very small, dark, or overexposed images with `RETAKE_REQUIRED`.
+The stable demo remains fixture-driven. With that environment active, run the local OCR with:
+
+```powershell
+python3 -m dayone --extractor paddleocr --port 8001 --db var/dayone-paddleocr.sqlite3
+```
+
+Python 3.12 and the pinned dependencies are required. The existing
+`.venv-paddle312` environment is ready to use. PP-OCRv6 medium models run
+on CPU; first use may download weights, then recognition runs locally.
+This uses OCR detection/recognition only, with no VLM or Tesseract fallback.
+
+Use only `dossiers_specimen_10_patientes-01.png` through
+`dossiers_specimen_10_patientes-06.png` from `data/Paper Registry/` for this
+OCR demo. The interface selects these six PNGs by default; the JPG fixture
+walkthrough below is a separate fixture mode.
+
+The parser reads the final antenatal visit from bounded cells in the selected
+clinical page's fixed layout. It accepts complete OCR readings at confidence
+0.85 or higher after format and range validation. No specimen values are
+provided to PaddleOCR or the parser. Unread fields, including document fields,
+require review. Urine-test results are never mapped to serology fields.
+
+It rejects very small images with `RETAKE_REQUIRED`, including PNG dimensions
+checked without additional dependencies. If Pillow is installed, it also checks
+image decoding, darkness, and overexposure. Without Pillow, these additional
+quality checks are unavailable.
 For readable labelled values it returns `KNOWN`; unclear handwritten values are
 returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person.
 
@@ -96,7 +123,7 @@ returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person.
 | WhatsApp inbound | Browser phone panel posts `{sender_id, message_id, media_ref}` to `/api/whatsapp/messages`. Images must already be in `data/Paper Registry/` | Not started: Meta webhook format, signature check, media download |
 | WhatsApp outbound | Acknowledgments stored in the database and shown in the simulated thread | Not started: sending through the Cloud API |
 | Senders | One seeded demo number mapped to *C/S Sidi Smail* | Not started: sender registration |
-| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` uses fast local Tesseract for real registry photos and sends unclear handwriting to review | OCR is local only; WhatsApp media download is not started |
+| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` uses fast local PaddleOCR for real registry photos and sends unclear handwriting to review | OCR is local only; WhatsApp media download is not started |
 | AI outage | "IA disponible" toggle | Would be a real extractor timeout or failure |
 
 ### Open blockers and limitations
