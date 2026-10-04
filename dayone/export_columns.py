@@ -1,10 +1,8 @@
 """The 31 columns of data/maternal_registry_synthetic.csv and how far each can be produced (docs/excel-field-mapping.md).
 
-This is the export side, kept apart from paper extraction (dayone/extended.py, dayone/ocr_extended.py): it names the
-paper inputs of each column and the decisions that block it. It computes nothing. No export row exists yet, because
-what a row is (D1), its generated ID (D2) and whether only reviewer-verified values are exported (D9) are open; the
-pregnancy-level calculations (mean blood pressure, enrollment gestational age, one lab value per pregnancy, previous
-cesarean) wait for D3, D4, D5 and D10.
+The catalog names each column's paper inputs and outstanding definitions. The demo export implements one row
+per registered patient and deterministic calculations from explicitly reviewer-verified values. Undefined columns
+remain blank; the catalog's coverage and blocking decisions describe the paper sources and remaining policy work.
 """
 
 from __future__ import annotations
@@ -128,7 +126,7 @@ def _verified_val(fv: dict | None) -> object:
     if fv.get("field_status") != "KNOWN":
         return None
     verif = fv.get("verification")
-    if isinstance(verif, dict) and verif.get("state") not in ("CONFIRMED", "CORRECTED"):
+    if not isinstance(verif, dict) or verif.get("state") not in ("CONFIRMED", "CORRECTED"):
         return None
     return fv.get("value")
 
@@ -172,6 +170,27 @@ def compute_export_row(patient: dict, visits: list[dict], extended_draft: dict |
                 return val
         return None
 
+    def _extended_visit_lab(field_name: str) -> object:
+        """Use the earliest verified lab by matching visit date, then catalog slot order.
+
+        Labs without a dated matching visit follow dated labs, ordered by slot; no date is inferred.
+        """
+        slot_dates = {}
+        for visit in sorted_visits:
+            slot_dates.setdefault(visit.get("slot"), str(visit["visit_date"]))
+        slot_order = {slot: index for index, slot in enumerate(schema.SLOTS)}
+
+        def lab_order(lab: dict) -> tuple:
+            slot = lab.get("slot")
+            date = slot_dates.get(slot)
+            return (date is None, date or "", slot_order.get(slot, len(slot_order)), str(slot))
+
+        for lab in sorted(ext.get("visit_labs") or [], key=lab_order):
+            val = _verified_val(lab.get("fields", {}).get(field_name))
+            if val is not None:
+                return val
+        return None
+
     prev_cesarean = None
     if prev_deliv_ext:
         verified_modes = [
@@ -199,11 +218,11 @@ def compute_export_row(patient: dict, visits: list[dict], extended_draft: dict |
     first_newborn = newborns_ext[0].get("fields", {}) if newborns_ext else {}
     nb_sex_val = _verified_val(first_newborn.get("newborn_sex"))
     nb_sex = None
-    if nb_sex_val:
+    if nb_sex_val is not None:
         sex_str = str(nb_sex_val).strip().upper()
-        if sex_str in ("M", "MASCULIN", "GARÇON", "GARCON", "1"):
+        if sex_str in ("MALE", "M", "MASCULIN", "GARÇON", "GARCON", "1"):
             nb_sex = 1
-        elif sex_str in ("F", "FÉMININ", "FEMININ", "FILLE", "0"):
+        elif sex_str in ("FEMALE", "F", "FÉMININ", "FEMININ", "FILLE", "0"):
             nb_sex = 0
 
     hiv_val = _visit_lab("hiv_test")
@@ -239,7 +258,7 @@ def compute_export_row(patient: dict, visits: list[dict], extended_draft: dict |
         "bmi pregestational (kg/m2)": None,
         "mean systolic bp (mmhg)": round(sum(sys_bps) / len(sys_bps), 1) if sys_bps else None,
         "mean diastolic bp (mmhg)": round(sum(dia_bps) / len(dia_bps), 1) if dia_bps else None,
-        "hemoglobin (g/dl)": _visit_lab("hemoglobin_g_dl"),
+        "hemoglobin (g/dl)": _extended_visit_lab("hemoglobin_g_dl"),
         "first fasting glucose (mg/dl)": None,
         "proteinuria": None,
         "hiv test result": hiv_res,

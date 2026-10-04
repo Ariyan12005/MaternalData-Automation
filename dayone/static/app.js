@@ -1543,6 +1543,10 @@ function summary(d) {
     el("caption", {}, "Visites qui seront enregistrées"),
     el("thead", {}, el("tr", {}, headers.map((h) => el("th", { scope: "col" }, h)))),
     el("tbody", {}, rows))));
+  if (!review.encounter_matches.length) {
+    node.append(el("p", { class: "warn" },
+      "Aucune visite dans ce dossier : ajoutez la page Grossesse actuelle pour exporter la tension et les données de suivi."));
+  }
 
   const empty = v1Entries(d.draft).filter(({ fv }) => fv.value === null);
   if (empty.length) {
@@ -1558,12 +1562,15 @@ function summary(d) {
   }
   node.append(el("p", { class: "muted" },
     `Les valeurs lues et non modifiées des visites seront marquées « vérifiées » par ${reviewer || "l'agent"}.`));
-  const extendedUnverified = extendedTargets(d.draft).filter(({ fv }) => fv.verification.state === "UNVERIFIED").length;
+  const pendingExtended = extendedTargets(d.draft).filter(({ fv }) => fv.verification.state === "UNVERIFIED");
+  const extendedUnverified = pendingExtended.length;
   if (extendedUnverified) {
-    node.append(el("p", { class: "muted" },
+    node.append(el("p", { class: "warn" },
       `${plural(extendedUnverified, "donnée complémentaire")} non ${agree(extendedUnverified, "vérifiée")} `
       + `${extendedUnverified > 1 ? "restent" : "reste"} avec le dossier, sans être confirmée${extendedUnverified > 1 ? "s" : ""} `
-      + "automatiquement ni enregistrée comme visite."));
+      + "automatiquement ni enregistrée comme visite. Elles resteront vides dans l'export Excel tant qu'elles ne sont pas vérifiées."));
+    const nextExtended = pendingExtended.find(({ fv }) => fv.value !== null) || pendingExtended[0];
+    node.append(button("Vérifier les données Excel", () => openField(nextExtended.target), "small"));
   }
   node.append(el("div", { class: "actions" },
     button("Confirmer et enregistrer", confirmDocument, "primary big", { disabled: undecided.length > 0 })));

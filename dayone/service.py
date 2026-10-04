@@ -1679,6 +1679,16 @@ class DayOneService:
             source_doc_ids = set()
             for v in visits:
                 source_doc_ids.update(v.get("sources", []))
+            # Identification or delivery records can be registered without antenatal visits.
+            # Their explicitly reviewed fields still belong in this patient's export.
+            registered_docs = db.execute(
+                "SELECT document_id, registration_json FROM documents "
+                "WHERE status IN ('REGISTERED', 'SYNCED') AND registration_json IS NOT NULL"
+            ).fetchall()
+            for registered_doc in registered_docs:
+                registration = json.loads(registered_doc["registration_json"])
+                if registration.get("patient_id") == patient_id:
+                    source_doc_ids.add(registered_doc["document_id"])
             # Deterministic selection: sorted by document_id DESC
             sorted_source_ids = sorted(source_doc_ids, reverse=True)
             extended_draft = None

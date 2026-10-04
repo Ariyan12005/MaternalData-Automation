@@ -362,6 +362,25 @@ class ExtendedReviewTest(LiveOcrAdapterTestCase):
     def ext(self) -> dict:
         return self.service.get_document(self.document_id)["draft"]["extended"]
 
+    def test_export_includes_reviewed_identification_without_visits(self):
+        self.assertEqual(self.service.get_document(self.document_id)["draft"]["encounters"], [])
+        age = self.ext()["pregnancy"]["maternal_age_years"]["value"]
+        self.assertIsNotNone(age)
+        self.review("maternal_age_years", "CONFIRM", "pregnancy")
+        for name in ("registry_file_number", "facility_name"):
+            self.service.review_field(self.document_id, reviewer=REVIEWER, scope="document", field=name,
+                                      action="CONFIRM")
+        for name in ("midwife_patient_code", "last_menstrual_period"):
+            self.service.review_field(self.document_id, reviewer=REVIEWER, scope="document", field=name,
+                                      action="SET_STATUS", field_status="NOT_PROVIDED")
+        self.service.select_patient(self.document_id, reviewer=REVIEWER, choice="NEW")
+        registered = self.service.confirm(self.document_id, reviewer=REVIEWER)
+        row = self.service.export_patient(registered["patient_id"])
+        self.assertEqual(row["age (years)"], age)
+        self.assertIsNone(row["gravidity (number)"], "an unreviewed OCR suggestion must remain blank")
+        self.service.sync_document(self.document_id, reviewer=REVIEWER)
+        self.assertEqual(self.service.export_patient(registered["patient_id"])["age (years)"], age)
+
     def test_reviews_are_recorded_and_unreviewed_values_stay_unverified_after_registration(self):
         self.review("consanguinity_mark", "CORRECT", "pregnancy", value="case cochée")
         self.review("newborn_sex", "CONFIRM", "newborns", 0)

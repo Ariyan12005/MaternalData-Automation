@@ -37,4 +37,24 @@ controls = [];
 context.renderConversationalCard({ step: "CONFIRM", expected_revision: 9, actions: ["CONFIRM"] });
 controls[0].click();
 assert.deepEqual(reply, { action: "CONFIRM", expected_revision: 9 });
-process.stdout.write("UI controls: patient choice, uncertainty, existing visits, section review and revision passed\n");
+const summarySource = source.slice(source.indexOf("function summary(d)"), source.indexOf("async function syncDocument(documentId)"));
+const ageTarget = { scope: "extended", section: "pregnancy", field: "maternal_age_years" };
+let opened;
+const summaryContext = vm.createContext({
+  state: { decisions: {} },
+  el: (tag, attrs, ...children) => ({ tag, attrs, children, append(...items) { this.children.push(...items); } }),
+  button: (label, click) => { const control = { label, click }; controls.push(control); return control; },
+  $: () => ({ value: "reviewer" }), basename: name => name,
+  v1Entries: () => [],
+  extendedTargets: () => [{ target: ageTarget, fv: { value: 29, verification: { state: "UNVERIFIED" } } }],
+  plural: (count, label) => `${count} ${label}`, agree: (count, label) => label,
+  openField: target => { opened = target; }, confirmDocument: () => {},
+});
+vm.runInContext(summarySource, summaryContext);
+controls = [];
+const summaryCard = summaryContext.summary({ review: { selection: { choice: "NEW" }, selection_warnings: [], encounter_matches: [] }, pages: [], draft: {} });
+assert.match(JSON.stringify(summaryCard), /Aucune visite/);
+assert.match(JSON.stringify(summaryCard), /export Excel/);
+controls.find(control => control.label === "Vérifier les données Excel").click();
+assert.equal(opened, ageTarget);
+process.stdout.write("UI controls and export review guidance passed\n");
