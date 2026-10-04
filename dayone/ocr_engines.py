@@ -80,7 +80,14 @@ def _version(distribution: str) -> str | None:
 
 def models_dir_from_env(environ=os.environ) -> Path:
     configured = environ.get("DAYONE_OCR_MODELS_DIR", "").strip()
-    return Path(configured).resolve() if configured else DEFAULT_MODELS_DIR
+    if configured:
+        return Path(configured).resolve()
+    if DEFAULT_MODELS_DIR.exists():
+        return DEFAULT_MODELS_DIR
+    parent_models = REPO_ROOT.parent / "ocr-models"
+    if parent_models.exists():
+        return parent_models
+    return DEFAULT_MODELS_DIR
 
 
 def model_set_from_env(environ=os.environ) -> str:

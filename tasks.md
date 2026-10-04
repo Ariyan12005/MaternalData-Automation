@@ -42,7 +42,7 @@ By default the WhatsApp side is a **simulator**: a phone panel in the browser po
 | 3 | **Encryption at rest**: SQLite database (drafts, visits, keys) and any stored media | "Local storage on the device must be encrypted" (consignes §4) | Ariyan | Not implemented: database is plain SQLite in `var/` |
 | 4 | **Authentication and roles** on every `/api/*` route | Anyone who can reach the port can review, confirm, read timelines, or call `POST /api/demo/reset` (wipes the database). Reviewer identity is a free-text `X-Reviewer` header | Ariyan + Aymane | Not implemented; server binds to `127.0.0.1` by default |
 | 5 | **Offline-capture demo** ("an offline capture, the return of connectivity") | Required demo scenario | Ariyan + Aymane | Not demonstrated. We only show the platform-side equivalent (AI outage, then recovery) |
-| 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan | Reserved, not implemented |
+| 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan + Aymane | Done: `sync_document()`, offline `item_status` tracking (`PENDING`, `SYNCED`, `FAILED`), idempotent replay (`tests/test_final_backend.py`) |
 | 7 | **Retake photo** over real WhatsApp | Rubric item (Confirm / Edit / **Retake**) | Aymane | Simulator done (`tests/test_retake.py`). Cloud API: the request is sent as a reply quoting the photo, and a reply quoting the request replaces the page. This is tested with mocks only (`test_reply_quoting_the_retake_request_replaces_the_page`). Open: sandbox check that image replies carry `context.id` (not documented for images), and template messages for requests sent more than 24 h after the midwife's last message. The actor is still back-office staff (#1) |
 | 8 | **Real extractor** | 30-pt extraction criterion | Aymane (from Fatma's extractor) | Partial: `--extractor paddle` runs local PaddleOCR (project `.venv`, `docs/ocr.md`) and reads the specimen visit grid, one encounter per visit column. Evaluated against a checked ground truth of the 80 specimen pages (`docs/ocr-evaluation.md`): clean renders 0 wrong KNOWN of 667 written values (72 % / 67 % correct KNOWN, development / held-out); simulated photos 8 wrong KNOWN of 979; every visit column found. Open: real phone photos (none tested), wrong KNOWN values on photos are saved as confirmed unless the reviewer catches them in the summary, the pink booklet layout, layout ID (D7), human spot-check of the ground truth, Tesseract unmeasured. Fixture mode stays the default |
 | 9 | **Real WhatsApp integration** | Bonus item; needed for a real pilot | Aymane | Partial: adapter implemented and tested against a mocked Meta API (`tests/test_whatsapp_cloud.py`). Observed on 2026-10-03 with a real Meta app (unpublished): webhook verification, a signed dashboard test webhook, real media upload and download into the review workflow, and duplicate replay. Open: real inbound messages need a **published app, which requires business verification**, and our app must be **subscribed to the WABA** (`GET /{waba-id}/subscribed_apps` does not list it; the fix, a `POST`, was not made). Also open: real sends, which are not authorised (sandbox databases are held), retake reply context, and template messages (`docs/whatsapp-cloud.md`, *Observed against Meta*). Depends on #3 (photos stored unencrypted), #4 and #10 (only the webhook listener may be exposed, through an HTTPS tunnel) |
@@ -363,6 +363,17 @@ Code: `dayone/whatsapp.py`, `make_webhook_handler` in `dayone/server.py`. Setup 
 
 ## Ariyan — Backend / records / sync / privacy
 
+### Part 3 implementation (ariyan-backend)
+
+Atlas encrypted persistence and original-photo storage, encrypted bridge outbox,
+extraction leases/callbacks, grouped upload APIs, selected-field update controls,
+visit version conflicts and timeline history are implemented. See
+`docs/backend-part3.md` for contracts and Windows setup in `README.md`.
+Live Atlas verification requires an Atlas URI; real Meta transport and OCR remain
+teammate integrations. Shared-token authentication is implemented; per-user/facility
+RBAC, automated retention and downstream export remain gaps. The fixture demo
+remains SQLite and unencrypted.
+
 ### Goals
 
 - **Product center:** longitudinal **patient registry** (visit timeline, documents, link keys).
@@ -385,6 +396,22 @@ Code: `dayone/whatsapp.py`, `make_webhook_handler` in `dayone/server.py`. Setup 
 
 ### Needs review (retake backend changes)
 
+- [ ] Encryption at rest for the database and stored images; auth on admin APIs.
+- [ ] Data model: `Patient`, `Visit`, `Document` (multipage), `FieldValue`, `ReviewTask`, `Job`, `MediaBlob`, `MidwifeSender` (WhatsApp id only).
+- [x] API for Aymane ingest: `POST /webhooks/whatsapp`, attach media to `Document`.
+- [x] API for back-office: list review queue, get draft, patch fields, confirm visit, list match candidates.
+- [x] API for Fatma: dequeue image jobs, post extraction result, update lifecycle to `AI_PROCESSED`.
+- [x] Persist raw + normalized values, confidence, field_status, validation_flags, correction history, verifier + timestamp.
+- [x] Store original images encrypted at rest; link to record ID, capture time, midwife ID, processing status; role-restricted download.
+- [x] Patient linking: facility-scoped `registry_file_number` + `midwife_patient_code`; strong match only **suggests**; reviewer selects; never auto-create.
+- [x] Patient timeline API: list visits/documents for internal patient id (for demo dashboard).
+- [x] Idempotency: WhatsApp `message_id`, job IDs, confirm tokens → no duplicate visits on retry.
+- [ ] Transactional confirm: `VALIDATED` + `REGISTERED` then trigger outbound notification job.
+- [ ] Offline queue module: `CAPTURED` / `PENDING_AI` while offline; sync worker on reconnect; state machine tests.
+- [ ] Local encrypted store spec (mobile/simulator): what gets queued before sync — document for README.
+- [ ] Security: HTTPS, auth on admin APIs, no PII in logs, retention policy for temp files, env-based keys.
+- [ ] Export: anonymized JSON/CSV for demo dashboard (optional bonus).
+- [x] Re-digitization: same keys photographed again → surface existing document in **review queue** for selective update.
 Written for the retake feature; Ariyan should review before merging:
 
 - [ ] `dayone/store.py`: new `retake_requests` table (partial unique index: one `PENDING` per page), new `pages.replaced_by` column, and `_migrate()` that adds the column to existing databases with `ALTER TABLE`. `Store.reset()` drops `retake_requests` before `pages`.
@@ -412,12 +439,12 @@ Written for the Cloud API adapter (Aymane's area) but they touch Ariyan's storag
 - [ ] **Authentication and roles** on all `/api/*` routes, including `POST /api/demo/reset` and `/media/` (blocker 4).
 - [ ] **HTTPS** (blocker 10).
 - [ ] Media storage for real WhatsApp images: **encrypted** copy and role-restricted download. Plain content-addressed files linked to the page through `whatsapp_inbound.page_id` exist today.
-- [ ] `SYNCED` / central sync worker, plus `SYNC_FAILED` (blocker 6).
+- [x] `SYNCED` / central sync worker: implemented in `dayone/service.py` (`sync_document`), `dayone/offline.py` (durable queue with `PENDING`, `SYNCED`, `FAILED` states), and server endpoint `POST /api/documents/{id}/sync` (blocker 6). Tests in `tests/test_final_backend.py`.
 - [ ] Notification job after registration.
 - [ ] Live extractor. Partial: local OCR (`dayone/ocr_engines.py`, `dayone/live_ocr.py`, `dayone/live_ocr_adapter.py`) with PaddleOCR as primary engine and Tesseract optional, installed in the project `.venv` (`docs/ocr.md`). OCR runs in a separate process with page and document timeouts, on its own extraction thread. Evaluated on synthetic specimen renders and simulated photo copies (`tools/ocr_evaluate.py`, `docs/ocr-evaluation.md`; opt-in `tests/test_real_ocr.py`); mocked tests cover the parser and the service path; restart, crash during extraction, retake during extraction and the page timeout were checked live on 2026-10-04. Open: real phone photos, other layouts, calibration on more data. `dayone/extraction_http.py` stays prepared for a future remote extractor; `--extractor http` refuses to start.
 - [ ] Retention policy for temporary files.
 - [ ] Automated test for a server crash during extraction (checked live with local OCR on 2026-10-04: the document stayed `PENDING_AI` and was read again after restart; no unit test yet).
-- [ ] Export of anonymized JSON/CSV for a dashboard (optional bonus). The CSV column layout and its open decisions are in `docs/excel-field-mapping.md`.
+- [x] Export of anonymized JSON/CSV for dashboard: implemented in `dayone/export_columns.py` (`compute_export_row`, `export_to_csv`), `dayone/service.py` (`export_patient`, `export_all_patients`, `export_csv`), and server endpoints `GET /api/patients/{id}/export`, `GET /api/export`, and `GET /api/export/csv`. Exact 31 columns matching `maternal_registry_synthetic.csv` without fabricating unmeasured data.
 
 ### Offline / recovery matrix
 

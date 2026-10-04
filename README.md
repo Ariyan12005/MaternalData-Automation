@@ -144,6 +144,134 @@ Run this before step 5 above, or on any document that is not yet registered.
 
 Retake API: `POST /api/pages/{page_id}/retake` (idempotent while pending), `POST /api/retakes/{request_id}/cancel`, and an optional `retake_request_id` in the `/api/whatsapp/messages` body. Contract: [docs/schema.md](./docs/schema.md#retake-requests).
 
+- **Verification is done by back-office staff, not the midwife.** The official instructions say "verified by the midwife". This is a deliberate deviation based on the organizers' verbal guidance, still to be confirmed in writing (see [docs/operating-model.md](./docs/operating-model.md)).
+- **Retake photo** is implemented and tested locally; real WhatsApp reply context remains unverified.
+- **Offline:** phone-side buffering relies on WhatsApp's own outbox. Our durable queue is the platform database. There is no on-device encrypted storage and fixture mode is unencrypted; secure Atlas and optional encrypted bridge capture are described below.
+- The extractor is a fixture lookup by page set (`1-1.jpg` + `1-4.jpg` or `1-1.jpg` + `1-5.jpg`). Other page sets fail and go to manual entry. Fixture values are illustrative and not ground truth.
+- Manual entry covers a single encounter. Fixture mode has no authentication; secure mode requires a shared backend credential, while the reviewer name remains an audit label. `SYNCED` is not implemented.
+
+
+## Part 3: Atlas backend and encrypted offline bridge
+
+[Backend architecture, integration endpoints and limits](docs/backend-part3.md).
+The original fixture demo stays available. The app reads process environment
+variables only (`.env.example` is a template, not auto-loaded).
+
+### Windows PowerShell — fixture demo (SQLite, unencrypted, mock extractor)
+
+```powershell
+Set-Location C:\Users\ariya\MaternalData-Automation
+python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+python -m dayone --host 127.0.0.1 --port 8000
+```
+
+### Windows PowerShell — Atlas + encrypted bridge
+
+Do **not** generate a new `DAYONE_ENCRYPTION_KEY` if a database already exists;
+paste the saved key instead. Allow this workstation's IP in Atlas Network Access.
+Create a database user limited to the DayOne database. Set User/Password/Cluster
+in the SRV URI; never commit it.
+
+```powershell
+Set-Location C:\Users\ariya\MaternalData-Automation
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+
+$env:DAYONE_STORAGE = "mongodb"
+$env:DAYONE_MONGODB_URI = "mongodb+srv://USER:PASSWORD@CLUSTER/?retryWrites=true&w=majority"
+$env:DAYONE_MONGODB_DATABASE = "dayone"
+# First database only. If a key already exists, paste it here instead of this line.
+$env:DAYONE_ENCRYPTION_KEY = (python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())").Trim()
+$env:DAYONE_API_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))").Trim()
+$env:DAYONE_EXTRACTOR = "external"
+
+@("DAYONE_STORAGE","DAYONE_MONGODB_URI","DAYONE_MONGODB_DATABASE","DAYONE_ENCRYPTION_KEY","DAYONE_API_TOKEN","DAYONE_EXTRACTOR") | ForEach-Object {
+  "{0} set={1} length={2}" -f $_, [bool][Environment]::GetEnvironmentVariable($_, "Process"), ([Environment]::GetEnvironmentVariable($_, "Process") + "").Length
+}
+
+python -m dayone --host 127.0.0.1 --port 8000
+```
+
+Browser login: username `dayone`, password = API token.
+`DAYONE_EXTRACTOR=external` is the real Fatma contract (claim/result + leased originals).
+Leave it unset only for the fixture extractor (mock; looks up `1-1.jpg`+`1-4.jpg` / `1-5.jpg`).
+`POST /api/whatsapp/uploads` is Aymane's authenticated **bridge** (not Meta's webhook envelope).
+The left-phone simulator (`/api/whatsapp/messages` + `dayone/static/`) is a mock.
+
+Atlas does not seed senders. In a **second** PowerShell window, activate the same venv
+and set the **same** token and encryption key (do not generate a second key):
+
+```powershell
+Set-Location C:\Users\ariya\MaternalData-Automation
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+$env:DAYONE_API_TOKEN = "<paste-the-same-token>"
+$env:DAYONE_ENCRYPTION_KEY = "<paste-the-same-saved-key>"
+$headers = @{ Authorization = "Bearer $env:DAYONE_API_TOKEN"; "X-Reviewer" = "ariyan" }
+$body = @{ facility_id = "FAC-TEST"; facility_name = "Demo facility"; sender_id = "whatsapp:+212600000001"; label = "Demo sender" } | ConvertTo-Json
+Invoke-RestMethod http://127.0.0.1:8000/api/admin/senders -Method Post -Headers $headers -ContentType application/json -Body $body
+python -m dayone.offline capture "data/Paper Registry/1-1.jpg" --sender "whatsapp:+212600000001" --message-id "wamid.edge-1" --group "scan-1"
+python -m dayone.offline capture "data/Paper Registry/1-5.jpg" --sender "whatsapp:+212600000001" --message-id "wamid.edge-2" --group "scan-1"
+python -m dayone.offline sync --url http://127.0.0.1:8000
+```
+
+Live Atlas checks must use a **separate test database**, never `dayone` production data.
+`LiveAtlasTest` creates and drops only `dayone_test_<uuid>`:
+
+```powershell
+$env:DAYONE_TEST_MONGODB_URI = $env:DAYONE_MONGODB_URI
+python -m unittest tests.test_mongo_store.LiveAtlasTest -v
+python -m unittest discover -s tests -v
+```
+
+The Atlas user must be allowed to create/drop those `dayone_test_*` databases (or use a
+separate test cluster). Unit tests without `DAYONE_TEST_MONGODB_URI` use an in-memory
+Mongo double and do **not** prove Atlas connectivity.
+
+Implemented: encrypted Atlas records/originals, grouped intake, durable encrypted
+outbox, leased extraction handoff, retry deduplication, stale edit/visit rejection,
+selected-field updates in the review UI, corrections and timeline history.
+The Atlas compatibility adapter runs existing SQL only in memory and reads all
+records per request; this preserves the team code but is intended for MVP scale.
+
+## Simple Atlas setup in Antigravity
+
+Open Antigravity's PowerShell terminal in this folder and run:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m dayone.setup
+python -m dayone
+```
+
+The wizard asks privately for your real Atlas connection string. It retains any
+existing encryption key; if none is configured, paste the saved key or type NEW
+only for an empty database. Configuration is saved in Git-ignored `.env` and loaded
+at server/offline CLI startup. Explicit environment variables take precedence.
+Back up this private file securely. Do not commit it or share its contents.
+Browser login is `dayone`, with the `DAYONE_API_TOKEN` value in your local `.env`.
+The wizard configures external extraction; Fatma's worker is still required.
+Setup saves configuration; it does not prove live Atlas connectivity.
+## Check Atlas and recover extraction failures
+
+```powershell
+python -m dayone.check
+```
+
+This read-only check loads your private configuration, checks Atlas connectivity,
+database read permissions and sample encrypted payloads without printing secrets.
+Missing settings are reported by name. Use `python -m dayone.setup` to configure
+Atlas first. Full write/transaction verification still uses the dedicated test.
+
+Back-office can now start manual entry while a closed scan waits in PENDING_AI,
+even without Fatma's worker. This invalidates late extraction callbacks through
+the document revision. The worker can report permanent failures through the
+new authenticated `/api/extraction/jobs/<job_id>/failure` endpoint.
 ### Simulator vs. real integration
 
 | Part | In the MVP (default) | Real integration (`--whatsapp-mode cloud`) |
@@ -160,10 +288,13 @@ Retake API: `POST /api/pages/{page_id}/retake` (idempotent while pending), `POST
 Tracked in [tasks.md](./tasks.md#blockers-and-open-gaps-keep-visible-until-resolved).
 
 - **Organizer confirmation (not obtained).** Verification is done by back-office staff, not the midwife, but the official instructions say "verified by the midwife". This deviation rests on verbal guidance and still needs written confirmation. The same applies to using WhatsApp's outbox as the phone-side offline queue. See [docs/operating-model.md](./docs/operating-model.md).
-- **No encryption at rest.** `var/dayone.sqlite3` is a plain SQLite file, and photos received from WhatsApp are stored unencrypted in `var/media/whatsapp/`.
+- **SQLite demo privacy limits.** SQLite records remain unencrypted. Atlas records and originals are encrypted; configured encrypted media storage also receives downloaded WhatsApp images.
 - **WhatsApp Cloud API only partly verified against Meta.** Webhook verification, signatures and media download work with a real Meta app. No real message has been received or sent: the app is unpublished (publishing needs business verification) and is not yet subscribed to the WhatsApp Business Account. Using it sends photos through Meta and the tunnel provider, so use specimen pages only until the organizers approve. See [docs/whatsapp-cloud.md](./docs/whatsapp-cloud.md#what-works-locally-and-what-still-needs-the-sandbox).
-- **No authentication.** Every `/api/*` route is open, including `POST /api/demo/reset`, which wipes the database. The reviewer name is free text. The server listens on `127.0.0.1` only by default and uses plain HTTP.
+- **Shared authentication.** Atlas requires a shared staff/API credential; individual users and facility RBAC remain unimplemented. Demo reset is disabled for Atlas or any database with an outbound hold. Use HTTPS for remote staff access.
 - **Offline gaps.** There is no on-device encrypted storage, and no demo of "offline capture, then return of connectivity". The demo shows the platform-side equivalent instead (AI outage, then recovery). `SYNCED` is not implemented.
 - **Retake over real WhatsApp is unverified.** In cloud mode, the request is sent as a reply quoting the photo, and the midwife's reply is matched to the request. Both are tested only with mocks. A registered document cannot be retaken: new photos form a new document, which goes through the update/keep decision for existing visits.
-- **Manual entry** covers a single encounter and is only offered after a failed extraction.
+- **Manual entry** covers a single encounter and is available for closed scans waiting for extraction or after extraction failure. Starting it while a read is running makes that read's result stale; it is discarded.
 - **Local OCR is evaluated on synthetic pages only.** No real phone photo has been read. On simulated photos, 8 of 979 written values were wrong but marked KNOWN, and confirmation saves unopened KNOWN values as confirmed. Only the specimen layout is supported. See [docs/ocr-evaluation.md](./docs/ocr-evaluation.md).
+
+Backend integration details, OCR media interfaces, verification and the remaining
+transport work are recorded in [docs/backend-integration.md](docs/backend-integration.md).

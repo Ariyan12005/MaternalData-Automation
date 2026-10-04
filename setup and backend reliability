@@ -1,0 +1,14 @@
+ .env.example              |   3 [32m+[m[31m-[m
+ README.md                 |  90 [32m+++++++++++++++++++[m[31m----[m
+ dayone/config.py          |  29 [32m++++++++[m
+ dayone/mongo_store.py     |  31 [32m+++++[m[31m---[m
+ dayone/offline.py         |   2 [32m+[m
+ dayone/security.py        |   7 [32m+[m[31m-[m
+ dayone/server.py          |  58 [32m++++++++++[m[31m-----[m
+ dayone/service.py         |  17 [32m+++[m[31m--[m
+ dayone/setup.py           |  57 [32m+++++++++++++++[m
+ docs/backend-part3.md     |  34 [32m++++++[m[31m---[m
+ tests/test_backend.py     |  50 [32m+++++++++++++[m
+ tests/test_config.py      |  20 [32m+++++[m
+ tests/test_mongo_store.py | 181 [32m+++++++++++++++++++++++++++++++++++++++++++[m[31m---[m
+ 13 files changed, 505 insertions(+), 74 deletions(-)

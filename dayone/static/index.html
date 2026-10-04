@@ -17,6 +17,7 @@
       </div>
     </div>
     <div class="controls">
+      <a href="/export/registry.csv" id="export-csv-btn" class="export-btn" download="maternal_registry_export.csv" title="Télécharger l'export RFC-4180 CSV avec les 31 colonnes standardisées">📥 Exporter CSV (31 col.)</a>
       <label class="field-label" for="reviewer">Agent
         <input id="reviewer" value="agent.demo" maxlength="60" autocomplete="off">
       </label>
@@ -62,8 +63,25 @@
       </div>
       <div class="phone">
         <div class="phone-header">
-          <strong>WhatsApp (simulé)</strong>
-          <span id="sender-label"></span>
+          <div class="phone-title-block">
+            <strong>WhatsApp (simulé)</strong>
+            <span id="sender-label"></span>
+          </div>
+          <div class="network-mode-wrapper">
+            <label class="toggle network-toggle" title="Simuler l'absence de réseau sur le terminal sage-femme">
+              <input type="checkbox" id="network-offline-toggle">
+              <span id="network-status-badge" class="badge-online">● En ligne</span>
+            </label>
+          </div>
+        </div>
+        <div id="offline-bar" class="offline-bar" hidden>
+          <div class="offline-bar-info">
+            <span class="offline-badge-pill">🔒 Hors-ligne</span>
+            <span class="offline-hint">Outbox chiffrée</span>
+          </div>
+          <button id="offline-reconnect-btn" type="button" class="btn-reconnect" disabled>
+            Rétablir connexion &amp; Envoyer (<span id="offline-buffered-count">0</span>)
+          </button>
         </div>
         <div id="thread" class="thread" role="log" aria-live="polite" aria-label="Messages échangés avec la sage-femme"
              tabindex="0"></div>

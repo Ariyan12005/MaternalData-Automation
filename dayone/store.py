@@ -7,10 +7,19 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-TABLES = ("whatsapp_outbound", "whatsapp_inbound", "events", "messages", "visits", "patients", "retake_requests",
-          "pages", "documents", "settings", "counters", "senders", "facilities")
+TABLES = ("central_sync_log", "jobs", "capture_groups", "whatsapp_outbound", "whatsapp_inbound", "events", "messages", "visits", "patients", "retake_requests", "pages", "documents", "settings", "counters", "senders", "facilities")
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS capture_groups (
+    group_id TEXT NOT NULL, sender_id TEXT NOT NULL, document_id TEXT NOT NULL,
+    PRIMARY KEY(group_id, sender_id)
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id TEXT PRIMARY KEY, document_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    token TEXT NOT NULL, lease_until TEXT NOT NULL, state TEXT NOT NULL,
+    UNIQUE(document_id, revision)
+);
+
 CREATE TABLE IF NOT EXISTS facilities (
     facility_id TEXT PRIMARY KEY,
     name TEXT NOT NULL
@@ -144,6 +153,17 @@ CREATE TABLE IF NOT EXISTS whatsapp_outbound (
     wa_message_id TEXT UNIQUE,
     last_error TEXT,
     updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS central_sync_log (
+    sync_id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL UNIQUE,
+    patient_id TEXT,
+    ack_id TEXT NOT NULL,
+    target TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    ack_signature TEXT NOT NULL,
+    synced_at TEXT NOT NULL
 );
 -- Queued in the same transaction as the message, so the service needs no change and simulator senders are never sent to.
 CREATE TRIGGER IF NOT EXISTS whatsapp_outbound_enqueue AFTER INSERT ON messages

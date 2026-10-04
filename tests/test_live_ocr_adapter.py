@@ -63,7 +63,7 @@ class LiveOcrAdapterTestCase(FlowTestCase):
         super().setUp()
         self.engine = FakeEngine()
         self.reader = FakeReader()
-        self.service.extractor = LiveOcrAdapter(self.service.resolve_media, self.engine, reader=self.reader)
+        self.service.extractor = LiveOcrAdapter(self.service.extraction_media, self.engine, reader=self.reader)
         self.photo_number = 0
 
     @property
@@ -454,7 +454,7 @@ class ServerTest(LiveOcrAdapterTestCase):
             return self.reader.default
 
         self.reader.read = slow_read
-        self.service.extractor = LiveOcrAdapter(self.service.resolve_media, self.engine, reader=self.reader,
+        self.service.extractor = LiveOcrAdapter(self.service.extraction_media, self.engine, reader=self.reader,
                                                 document_timeout=120, monotonic=lambda: clock[0])
         refs = [self.whatsapp_photo()[0] for _ in range(4)]
         document_id = self.send(*refs)
@@ -480,7 +480,7 @@ class ServerTest(LiveOcrAdapterTestCase):
             return original(path, **options)
 
         self.reader.read = read
-        self.service.extractor = LiveOcrAdapter(self.service.resolve_media, self.engine, reader=self.reader)
+        self.service.extractor = LiveOcrAdapter(self.service.extraction_media, self.engine, reader=self.reader)
         self.wait_for_draft()
         self.assertEqual({k: snapshots[0]["extraction_progress"][k] for k in ("pages_done", "pages")},
                          {"pages_done": 0, "pages": 2})

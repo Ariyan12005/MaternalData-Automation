@@ -455,6 +455,8 @@ class WhatsAppCloud:
         row = db.execute("SELECT * FROM whatsapp_outbound WHERE wa_message_id = ?", (update.wa_message_id,)).fetchone()
         if row is None or row["status"] == "FAILED":
             return 0
+        if update.status == "FAILED" and row["status"] in ("DELIVERED", "READ"):
+            return 0
         if update.status == "FAILED":
             code = f"STATUS_FAILED_{update.error_code}"
             if update.error_code in TRANSIENT_GRAPH_CODES and row["attempts"] < MAX_OUTBOUND_ATTEMPTS:
@@ -521,6 +523,8 @@ class WhatsAppCloud:
         log.info("inbound %s stored as %s", row["inbound_id"], result["page_id"])
 
     def _store_media(self, data: bytes, extension: str) -> str:
+        if self.service.media_store is not None:
+            return self.service.media_store.put(data, extension)
         name = hashlib.sha256(data).hexdigest() + extension
         target = self.config.media_dir / name
         try:

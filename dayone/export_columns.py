@@ -119,3 +119,153 @@ def coverage_markdown() -> str:
         lines.append(f"| {c.number} | `{c.header}` | {c.category} | {c.scope} | {inputs} | "
                      f"{', '.join(c.decisions) or 'none'} |")
     return "\n".join(lines)
+
+
+def _verified_val(fv: dict | None) -> object:
+    """Returns the value only if field_status is KNOWN and verification state is CONFIRMED or CORRECTED."""
+    if not isinstance(fv, dict):
+        return None
+    if fv.get("field_status") != "KNOWN":
+        return None
+    verif = fv.get("verification")
+    if isinstance(verif, dict) and verif.get("state") not in ("CONFIRMED", "CORRECTED"):
+        return None
+    return fv.get("value")
+
+
+def compute_export_row(patient: dict, visits: list[dict], extended_draft: dict | None = None,
+                       *, row_id: str | None = None, assumptions: dict | None = None) -> dict[str, object]:
+    """Computes a single row corresponding to the 31 columns of maternal_registry_synthetic.csv.
+
+    Fields that are unavailable or unverified remain visibly None (empty in CSV).
+    Deterministic aggregations (mean BP, delivery mode, newborn sex, gestational age) are computed
+    strictly from verified visit and extended paper inputs without data fabrication.
+    """
+    assumptions = assumptions or {}
+    ext = extended_draft or {}
+    pregnancy_ext = ext.get("pregnancy") or {}
+    delivery_ext = ext.get("delivery") or {}
+    newborns_ext = ext.get("newborns") or []
+    prev_deliv_ext = ext.get("previous_deliveries") or []
+
+    sorted_visits = sorted(
+        [v for v in visits if v.get("visit_date")],
+        key=lambda v: str(v.get("visit_date")),
+    )
+
+    sys_bps = [
+        v["fields"]["systolic_bp_mmhg"]["value"]
+        for v in sorted_visits
+        if "systolic_bp_mmhg" in v.get("fields", {}) and _verified_val(v["fields"]["systolic_bp_mmhg"]) is not None
+    ]
+    dia_bps = [
+        v["fields"]["diastolic_bp_mmhg"]["value"]
+        for v in sorted_visits
+        if "diastolic_bp_mmhg" in v.get("fields", {}) and _verified_val(v["fields"]["diastolic_bp_mmhg"]) is not None
+    ]
+
+    def _visit_lab(field_name: str) -> object:
+        for v in sorted_visits:
+            f = v.get("fields", {}).get(field_name)
+            val = _verified_val(f)
+            if val is not None:
+                return val
+        return None
+
+    prev_cesarean = None
+    if prev_deliv_ext:
+        verified_modes = [
+            _verified_val(d.get("fields", {}).get("previous_delivery_mode_text"))
+            for d in prev_deliv_ext
+        ]
+        verified_modes = [m for m in verified_modes if m is not None]
+        if verified_modes:
+            has_cesarean = any("cesar" in str(m).lower() for m in verified_modes)
+            all_vaginal = all("basse" in str(m).lower() or "vag" in str(m).lower() for m in verified_modes)
+            if has_cesarean:
+                prev_cesarean = 1
+            elif all_vaginal:
+                prev_cesarean = 0
+
+    delivery_mode_val = _verified_val(delivery_ext.get("delivery_mode"))
+    delivery_type = None
+    if delivery_mode_val:
+        mode_str = str(delivery_mode_val).lower()
+        if "cesar" in mode_str:
+            delivery_type = 1
+        elif "voie_basse" in mode_str or "vag" in mode_str:
+            delivery_type = 0
+
+    first_newborn = newborns_ext[0].get("fields", {}) if newborns_ext else {}
+    nb_sex_val = _verified_val(first_newborn.get("newborn_sex"))
+    nb_sex = None
+    if nb_sex_val:
+        sex_str = str(nb_sex_val).strip().upper()
+        if sex_str in ("M", "MASCULIN", "GARÇON", "GARCON", "1"):
+            nb_sex = 1
+        elif sex_str in ("F", "FÉMININ", "FEMININ", "FILLE", "0"):
+            nb_sex = 0
+
+    hiv_val = _visit_lab("hiv_test")
+    hiv_res = 1 if hiv_val == "POSITIVE" else (0 if hiv_val == "NEGATIVE" else None)
+    syph_val = _visit_lab("syphilis_test")
+    syph_res = 1 if syph_val == "POSITIVE" else (0 if syph_val == "NEGATIVE" else None)
+
+    ga_enroll = None
+    for v in sorted_visits:
+        ga_val = _verified_val(v.get("fields", {}).get("gestational_age_days"))
+        if ga_val is not None:
+            ga_enroll = round(ga_val / 7, 1) if assumptions.get("fractional_weeks") else ga_val // 7
+            break
+
+    ga_birth_days = _verified_val(delivery_ext.get("delivery_gestational_age_days"))
+    ga_birth = None
+    if ga_birth_days is not None:
+        ga_birth = round(ga_birth_days / 7, 1) if assumptions.get("fractional_weeks") else ga_birth_days // 7
+
+    return {
+        "id": row_id or f"EXP-{patient.get('patient_id', 'UNKNOWN')}",
+        "age (years)": _verified_val(pregnancy_ext.get("maternal_age_years")),
+        "education level (0=none/primary,1=secondary,2=higher)": None,
+        "consanguinity": None,
+        "desired pregnancy": None,
+        "hypertension history": None,
+        "diabetes mellitus": None,
+        "gravidity (number)": _verified_val(pregnancy_ext.get("gravidity")),
+        "parity (number)": _verified_val(pregnancy_ext.get("parity")),
+        "abortions (number)": _verified_val(pregnancy_ext.get("abortions_count")),
+        "living children (number)": _verified_val(pregnancy_ext.get("living_children_count")),
+        "previous cesarean": prev_cesarean,
+        "bmi pregestational (kg/m2)": None,
+        "mean systolic bp (mmhg)": round(sum(sys_bps) / len(sys_bps), 1) if sys_bps else None,
+        "mean diastolic bp (mmhg)": round(sum(dia_bps) / len(dia_bps), 1) if dia_bps else None,
+        "hemoglobin (g/dl)": _visit_lab("hemoglobin_g_dl"),
+        "first fasting glucose (mg/dl)": None,
+        "proteinuria": None,
+        "hiv test result": hiv_res,
+        "syphilis test result": syph_res,
+        "hepatitis c test result": None,
+        "gestational age at enrollment (weeks)": ga_enroll,
+        "gestational dm": None,
+        "gestational age at birth (weeks)": ga_birth,
+        "preterm birth": None,
+        "type of delivery (0=vaginal,1=cesarean)": delivery_type,
+        "newborn sex (0=female,1=male)": nb_sex,
+        "child birth weight (g)": _verified_val(first_newborn.get("birth_weight_g")),
+        "head circumference (cm)": _verified_val(first_newborn.get("birth_head_circumference_cm")),
+        "breastfeeding initiated": None,
+        "referral to higher care": None,
+    }
+
+
+def export_to_csv(rows: list[dict[str, object]]) -> str:
+    """Exports computed rows to standard CSV text matching the 31 headers."""
+    import csv
+    import io
+    output = io.StringIO()
+    headers = [c.header for c in COLUMNS]
+    writer = csv.DictWriter(output, fieldnames=headers, lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: ("" if v is None else v) for k, v in row.items()})
+    return output.getvalue()

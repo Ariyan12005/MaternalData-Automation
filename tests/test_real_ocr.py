@@ -51,7 +51,7 @@ class RealOcrTest(FlowTestCase):
                      if p["page"] == PAGE)
         pool = _pool()
         self.addCleanup(pool.close)
-        self.service.extractor = LiveOcrAdapter(self.service.resolve_media, ocr_engines.create_engine("paddle", environ=OCR_ENV),
+        self.service.extractor = LiveOcrAdapter(self.service.extraction_media, ocr_engines.create_engine("paddle", environ=OCR_ENV),
                                                 reader=pool, document_timeout=600)
         document_id = self.send(ocr_specimen_eval.page_png(PAGE).relative_to(REPO_ROOT).as_posix())
         self.wait_for_draft()

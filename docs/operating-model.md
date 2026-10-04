@@ -81,6 +81,17 @@ Actions: get the organizers' guidance **in writing**; state the deviation in the
 
 ## Privacy
 
+Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs (the server logs paths only, never query strings or bodies); synthetic data only for third-party models unless approved.
+
+
+## Part 3 implementation update
+
+Secure Atlas mode now stores encrypted records and original uploads; SQLite
+remains the fixture demo. An optional encrypted bridge/simulator outbox captures
+photos while disconnected and retries uploads and batch closure. This is not a
+phone companion app and does not establish WhatsApp device storage guarantees.
+Backend bearer/Basic authentication uses a shared credential; individual facility
+roles and automated retention remain gaps. See [backend contracts](backend-part3.md).
 Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers on the fiche; no PHI in logs; local storage must be encrypted; synthetic data only for third-party models unless approved.
 
 | Control | State in the MVP |
@@ -89,6 +100,6 @@ Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers o
 | Direct identifiers detected on the page | Recorded by hand in the fixtures (`pii_detected`); no real detection yet |
 | PHI in logs | Request logs contain the path only, never query strings or bodies |
 | Original images and ground truth | Read only; pages reference files in `data/Paper Registry/` with a SHA-256 hash |
-| Encryption at rest | **Not implemented** (plain SQLite in `var/`) |
-| Authentication / roles | **Not implemented**: all API routes are open, including the demo reset; reviewer name is free text |
+| Encryption at rest | Atlas records/originals encrypted; SQLite demo records remain plain |
+| Authentication / roles | Shared token in secure mode; individual/facility roles remain unimplemented; held/Atlas reset disabled |
 | Transport | Plain HTTP, bound to `127.0.0.1` by default |

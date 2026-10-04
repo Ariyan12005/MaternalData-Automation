@@ -391,9 +391,10 @@ class ExtendedReviewTest(LiveOcrAdapterTestCase):
 
     def test_the_fields_route_passes_the_section_and_item(self):
         api = server.Api(self.service)
+        rev = self.service.get_document(self.document_id)["document"]["revision"]
         status, body = api.dispatch("POST", f"/api/documents/{self.document_id}/fields", {}, {
             "scope": "extended", "section": "newborns", "item_index": 0, "field": "birth_weight_g",
-            "action": "CORRECT", "value": "3250"}, REVIEWER)
+            "action": "CORRECT", "value": "3250", "expected_revision": rev}, REVIEWER)
         self.assertEqual(status, 200, body)
         self.assertEqual(self.ext()["newborns"][0]["fields"]["birth_weight_g"]["value"], 3250)
         status, body = api.dispatch("GET", "/api/system", {}, {}, None)
