@@ -1,4 +1,4 @@
-"""HTTP API, simulated WhatsApp webhook and back-office UI (standard library only)."""
+"""HTTP API, simulated WhatsApp webhook, Cloud API webhook listener and back-office UI (standard library only)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import mimetypes
+import os
 import re
 import threading
 from http import HTTPStatus
@@ -13,7 +14,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import extraction_http, live_ocr_adapter, ocr_engines, ocr_process, whatsapp
 from .extraction import FixtureExtractor
+from .extraction_pool import ExtractionPool
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
 
@@ -24,13 +27,32 @@ MAX_BODY_BYTES = 64 * 1024
 log = logging.getLogger("dayone")
 
 
-def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8) -> DayOneService:
-    return DayOneService(
+def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8,
+                  inbound_media_dir: Path | None = None, ocr_engine=None, ocr_reader=None,
+                  document_timeout: float | None = None) -> DayOneService:
+    """ocr_reader reads pages for ocr_engine (the server passes an ocr_process.OcrProcessPool); document_timeout
+    bounds the OCR of one document, in seconds."""
+    service = DayOneService(
         Store(db_path),
         FixtureExtractor(REPO_ROOT / "fixtures"),
         REPO_ROOT,
         grouping_window_seconds=grouping_window_seconds,
+        inbound_media_dir=inbound_media_dir or whatsapp.media_dir_from_env(os.environ, REPO_ROOT),
     )
+    if ocr_engine is not None:
+        service.extractor = live_ocr_adapter.LiveOcrAdapter(service.resolve_media, ocr_engine, reader=ocr_reader,
+                                                            document_timeout=document_timeout)
+    return service
+
+
+def ocr_reader_for(choice: str, settings: dict) -> ocr_process.OcrProcessPool:
+    """One OCR process building the same engine as the one checked at startup (same OCR settings only)."""
+    environ = {key: value for key, value in os.environ.items()
+               if key in ("DAYONE_OCR_MODELS", "DAYONE_OCR_MODELS_DIR", "DAYONE_OCR_CPU_THREADS",
+                          "DAYONE_TESSERACT_CMD")}
+    spec = ocr_process.EngineSpec("dayone.ocr_engines:create_engine", {"choice": choice, "environ": environ})
+    return ocr_process.OcrProcessPool(spec, workers=1, page_timeout=settings["page_timeout"],
+                                      start_timeout=settings["start_timeout"], temp_root=settings["temp_root"])
 
 
 class Api:
@@ -38,20 +60,23 @@ class Api:
         self.service = service
         s = service
         self.routes = [
+            ("GET", r"/api/whatsapp/deliveries", lambda m, q, b, r: whatsapp.delivery_overview(s.store)),
             ("GET", r"/api/system", lambda m, q, b, r: s.system_info()),
             ("POST", r"/api/system/ai", lambda m, q, b, r: s.set_ai_available(bool(b.get("available")))),
             ("POST", r"/api/demo/reset", self._reset),
             ("GET", r"/api/senders", lambda m, q, b, r: s.list_senders()),
             ("GET", r"/api/media", lambda m, q, b, r: s.list_media()),
             ("POST", r"/api/whatsapp/messages", lambda m, q, b, r: s.ingest_photo(
-                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"))),
+                sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"),
+                retake_request_id=b.get("retake_request_id"))),
             ("GET", r"/api/whatsapp/thread", lambda m, q, b, r: s.thread(_query(q, "sender_id"))),
             ("GET", r"/api/documents", lambda m, q, b, r: s.list_documents()),
             ("GET", r"/api/documents/(DOC-\d+)", lambda m, q, b, r: s.get_document(m[1])),
             ("POST", r"/api/documents/(DOC-\d+)/fields", lambda m, q, b, r: s.review_field(
                 m[1], reviewer=r, scope=b.get("scope"), field=b.get("field"), action=b.get("action"),
                 encounter_index=b.get("encounter_index"), value=b.get("value"),
-                field_status=b.get("field_status"), expected_revision=b.get("expected_revision"))),
+                field_status=b.get("field_status"), expected_revision=b.get("expected_revision"),
+                section=b.get("section"), item_index=b.get("item_index"))),
             ("POST", r"/api/documents/(DOC-\d+)/patient", lambda m, q, b, r: s.select_patient(
                 m[1], reviewer=r, choice=b.get("choice"), patient_id=b.get("patient_id"),
                 expected_revision=b.get("expected_revision"))),
@@ -62,6 +87,10 @@ class Api:
                 m[1], reviewer=r)),
             ("POST", r"/api/pages/(PAGE-\d+)/move", lambda m, q, b, r: s.move_page(
                 m[1], reviewer=r, target_document_id=b.get("target_document_id"))),
+            ("POST", r"/api/pages/(PAGE-\d+)/retake", lambda m, q, b, r: s.request_retake(m[1], reviewer=r)),
+            ("POST", r"/api/pages/(PAGE-\d+)/section", lambda m, q, b, r: s.set_page_section(
+                m[1], reviewer=r, section=b.get("section"), expected_revision=b.get("expected_revision"))),
+            ("POST", r"/api/retakes/(RTK-\d+)/cancel", lambda m, q, b, r: s.cancel_retake(m[1], reviewer=r)),
             ("GET", r"/api/patients", lambda m, q, b, r: s.list_patients()),
             ("GET", r"/api/patients/(PAT-\d+)/timeline", lambda m, q, b, r: s.patient_timeline(m[1])),
         ]
@@ -78,8 +107,9 @@ class Api:
                     return HTTPStatus.OK, handler(match, query, body, reviewer)
                 except ServiceError as exc:
                     return exc.status, {"error": {"code": exc.code, "message": exc.message, "details": exc.details}}
-                except Exception:
-                    log.exception("unhandled error on %s %s", method, path)
+                except Exception as exc:
+                    # The type only: a message or traceback may quote request values or draft fields.
+                    log.error("unhandled error on %s %s (%s)", method, path, type(exc).__name__)
                     return HTTPStatus.INTERNAL_SERVER_ERROR, {
                         "error": {"code": "INTERNAL", "message": "Erreur interne.", "details": None}}
         return HTTPStatus.NOT_FOUND, {"error": {"code": "NOT_FOUND", "message": "Route inconnue.", "details": None}}
@@ -154,9 +184,13 @@ def make_handler(api: Api):
             if file.parent != STATIC_DIR.resolve() or not file.is_file():
                 self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")
                 return
-            content_type = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}.get(
-                file.suffix, "application/octet-stream")
-            self._send(HTTPStatus.OK, file.read_bytes(), f"{content_type}; charset=utf-8")
+            text_types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
+            image_types = {".jpg": "image/jpeg", ".png": "image/png"}
+            if file.suffix in text_types:
+                self._send(HTTPStatus.OK, file.read_bytes(), f"{text_types[file.suffix]}; charset=utf-8")
+            else:
+                self._send(HTTPStatus.OK, file.read_bytes(), image_types.get(file.suffix, "application/octet-stream"),
+                           cache=True)
 
         def _send(self, status, data: bytes, content_type: str, *, cache: bool = False) -> None:
             self.send_response(status)
@@ -177,12 +211,99 @@ def make_handler(api: Api):
     return Handler
 
 
-def _run_worker(service: DayOneService, stop: threading.Event, interval: float = 1.0) -> None:
+def make_webhook_handler(adapter: whatsapp.WhatsAppCloud):
+    """Serves only the Cloud API webhook path; this is the one listener a tunnel may expose."""
+
+    class WebhookHandler(BaseHTTPRequestHandler):
+        server_version = "DayOne-Webhook"
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            if url.path != whatsapp.WEBHOOK_PATH:
+                self._send(HTTPStatus.NOT_FOUND, b"")
+                return
+            challenge = adapter.subscription_challenge(parse_qs(url.query))
+            if challenge is None:
+                self._send(HTTPStatus.FORBIDDEN, b"")
+                return
+            self._send(HTTPStatus.OK, challenge.encode("ascii"))
+
+        def do_POST(self):
+            if urlparse(self.path).path != whatsapp.WEBHOOK_PATH:
+                self._send(HTTPStatus.NOT_FOUND, b"")
+                return
+            length = self.headers.get("Content-Length")
+            if length is None or not length.isdigit():
+                self._send(HTTPStatus.LENGTH_REQUIRED, b"")
+                return
+            if int(length) > whatsapp.MAX_WEBHOOK_BYTES:
+                self._send(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, b"")
+                return
+            raw = self.rfile.read(int(length))
+            if len(raw) != int(length):
+                self._send(HTTPStatus.BAD_REQUEST, b"")
+                return
+            if not adapter.signature_valid(raw, self.headers.get("X-Hub-Signature-256")):
+                log.warning("webhook rejected: missing or invalid signature")
+                self._send(HTTPStatus.UNAUTHORIZED, b"")
+                return
+            try:
+                payload = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = None
+            if not isinstance(payload, dict):
+                self._send(HTTPStatus.BAD_REQUEST, b"")
+                return
+            try:
+                summary = adapter.record_webhook(payload)
+            except Exception as exc:
+                # Non-200 makes Meta retry; duplicates are dropped by WhatsApp message ID.
+                log.error("webhook not recorded (%s)", type(exc).__name__)
+                self._send(HTTPStatus.INTERNAL_SERVER_ERROR, b"")
+                return
+            log.info("webhook recorded: %s", summary)
+            self._send(HTTPStatus.OK, b"")
+
+        def _send(self, status, data: bytes) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_request(self, code="-", size="-"):
+            log.info("webhook %s %s -> %s", self.command, urlparse(self.path).path, code)
+
+        def log_message(self, format, *args):
+            # args can hold the raw request line, whose query string carries hub.verify_token.
+            log.warning("webhook http error")
+
+    return WebhookHandler
+
+
+def _run_worker(service: DayOneService, stop: threading.Event, adapter: whatsapp.WhatsAppCloud | None = None,
+                interval: float = 1.0, send_outbound: bool = True, pool: ExtractionPool | None = None) -> None:
+    """Every second: WhatsApp inbound, queue the documents to extract, WhatsApp outbound. With a pool, extraction
+    runs on the pool's threads and never delays the WhatsApp jobs; without one, it runs here (service.tick)."""
     while not stop.wait(interval):
+        if adapter is not None:
+            try:
+                adapter.process_inbound()
+            except Exception as exc:
+                log.error("whatsapp inbound tick failed (%s)", type(exc).__name__)
         try:
-            service.tick()
-        except Exception:
-            log.exception("queue tick failed")
+            if pool is not None:
+                pool.submit(service.queued_documents())
+            else:
+                service.tick()
+        except Exception as exc:
+            log.error("queue tick failed (%s)", type(exc).__name__)
+        if adapter is not None and send_outbound:
+            try:
+                adapter.deliver_outbound()
+            except Exception as exc:
+                log.error("whatsapp outbound tick failed (%s)", type(exc).__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -191,23 +312,113 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db", default=str(REPO_ROOT / "var" / "dayone.sqlite3"))
     parser.add_argument("--window", type=int, default=8, help="multipage grouping window in seconds")
+    parser.add_argument("--env-file", help="read KEY=VALUE settings from this file (existing variables win)")
+    parser.add_argument("--whatsapp-mode", choices=("simulator", "cloud"),
+                        help="default: DAYONE_WHATSAPP_MODE, else simulator")
+    parser.add_argument("--webhook-host", default="127.0.0.1")
+    parser.add_argument("--webhook-port", type=int, default=8001)
+    parser.add_argument("--hold-outbound", action="store_true",
+                        help="queue outgoing WhatsApp messages but never send them; the hold is stored in the "
+                             "database and survives restarts until `python -m dayone.whatsapp discard-held`")
+    parser.add_argument("--extractor", choices=("fixture", "paddle", "tesseract", "http"),
+                        help="default: DAYONE_EXTRACTOR, else fixture. paddle (primary) or tesseract (optional) runs "
+                             "local OCR in separate processes with a page timeout (docs/ocr.md); http is prepared "
+                             "but not connected yet")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    service = build_service(args.db, grouping_window_seconds=args.window)
+    if args.env_file:
+        whatsapp.load_env_file(args.env_file)
+    mode = args.whatsapp_mode or os.environ.get("DAYONE_WHATSAPP_MODE", "simulator").strip() or "simulator"
+    if mode not in ("simulator", "cloud"):
+        parser.error("DAYONE_WHATSAPP_MODE must be simulator or cloud")
+    extractor_mode = args.extractor or os.environ.get("DAYONE_EXTRACTOR", "fixture").strip() or "fixture"
+    if extractor_mode not in ("fixture", "paddle", "tesseract", "http"):
+        parser.error("DAYONE_EXTRACTOR must be fixture, paddle, tesseract or http")
+    ocr_engine = None
+    try:
+        ocr_settings = ocr_process.settings_from_env(os.environ)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if extractor_mode in ocr_engines.ENGINES:
+        try:
+            ocr_engine = ocr_engines.create_engine(extractor_mode)
+        except ValueError as exc:
+            parser.error(str(exc))
+        missing = ocr_engine.missing()
+        if missing:
+            parser.error(f"extractor {extractor_mode}: missing {', '.join(missing)}. See docs/ocr.md, "
+                         "or use --extractor fixture (the default).")
+    if extractor_mode == "http":
+        try:
+            extraction_http.load_extractor_config(os.environ)
+        except extraction_http.ExtractorConfigError as exc:
+            parser.error(str(exc))
+        parser.error("extractor http: the endpoint settings are valid, but the request format, authentication and "
+                     "error responses are not agreed with Fatma yet, so no page is sent. See docs/extractor-contract.md. "
+                     "Use --extractor fixture (the default) meanwhile.")
+
+    config = None
+    if mode == "cloud":
+        if not whatsapp.is_loopback(args.host):
+            parser.error("cloud mode: the back-office has no authentication; keep --host on 127.0.0.1 "
+                         "and expose only the webhook port")
+        if args.webhook_port == args.port:
+            parser.error("cloud mode: --webhook-port must differ from --port")
+        try:
+            config = whatsapp.load_config(os.environ, REPO_ROOT)
+        except whatsapp.ConfigError as exc:
+            parser.error(str(exc))
+
+    ocr_reader = ocr_reader_for(extractor_mode, ocr_settings) if ocr_engine is not None else None
+    service = build_service(args.db, grouping_window_seconds=args.window,
+                            inbound_media_dir=config.media_dir if config else None, ocr_engine=ocr_engine,
+                            ocr_reader=ocr_reader, document_timeout=ocr_settings["document_timeout"])
     service.ensure_seed()
+    if args.hold_outbound:
+        whatsapp.hold_outbound(service.store)
+    elif config is not None and whatsapp.outbound_hold_active(service.store):
+        service.store.close()
+        if ocr_reader is not None:
+            ocr_reader.close()
+        parser.error("cloud mode: this database was run with --hold-outbound and its queued messages must never be "
+                     "sent by accident. Keep --hold-outbound, or run `python -m dayone.whatsapp discard-held --db "
+                     "<path>` to drop them (nothing is sent) before sending new messages.")
 
     server = ThreadingHTTPServer((args.host, args.port), make_handler(Api(service)))
+    adapter, webhook_server = None, None
+    if config is not None:
+        adapter = whatsapp.WhatsAppCloud(service, config)
+        webhook_server = ThreadingHTTPServer((args.webhook_host, args.webhook_port), make_webhook_handler(adapter))
+        threading.Thread(target=webhook_server.serve_forever, daemon=True).start()
     stop = threading.Event()
-    threading.Thread(target=_run_worker, args=(service, stop), daemon=True).start()
+    # One document at a time, read by one OCR process that keeps its models loaded between pages.
+    pool = ExtractionPool(service, workers=1)
+    if ocr_reader is not None:
+        ocr_reader.warm_up()
+    threading.Thread(target=_run_worker, args=(service, stop, adapter),
+                     kwargs={"send_outbound": not args.hold_outbound, "pool": pool}, daemon=True).start()
     print(f"DayOne prototype running at http://{args.host}:{args.port}/  (Ctrl+C to stop)")
+    if webhook_server is not None:
+        print(f"WhatsApp Cloud API webhook (only this port may be tunnelled): "
+              f"http://{args.webhook_host}:{args.webhook_port}{whatsapp.WEBHOOK_PATH}  API {config.api_version}")
+        if args.hold_outbound:
+            print("Outgoing WhatsApp messages are queued but NOT sent (--hold-outbound).")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         stop.set()
+        if webhook_server is not None:
+            webhook_server.shutdown()
+            webhook_server.server_close()
         server.server_close()
+        # Stopping the OCR processes ends any page in progress; its document stays queued for the next start.
+        pool.shutdown()
+        if ocr_reader is not None:
+            ocr_reader.close()
+        pool.wait_idle(15)
         service.store.close()
 
 

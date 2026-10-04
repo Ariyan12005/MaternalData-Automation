@@ -3,57 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DayOne – prototype</title>
+  <title>Day1 – Vérification des fiches prénatales</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <a class="skip-link" href="#review">Aller au dossier en cours</a>
   <header class="topbar">
-    <h1>DayOne <span>prototype à fixtures</span></h1>
+    <div class="brand">
+      <img class="logo" src="/logo-day1.jpg" width="200" height="200" alt="Day1">
+      <div>
+        <h1>Vérification des fiches prénatales</h1>
+        <p class="subtitle">Back-office · prototype avec données de démonstration</p>
+      </div>
+    </div>
     <div class="controls">
-      <label>Agent back-office <input id="reviewer" value="agent.demo" maxlength="60" autocomplete="off"></label>
-      <label class="toggle"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
-      <button id="reset-demo" type="button" class="ghost">Réinitialiser la démo</button>
+      <label class="field-label" for="reviewer">Agent
+        <input id="reviewer" value="agent.demo" maxlength="60" autocomplete="off">
+      </label>
+      <fieldset class="demo-controls">
+        <legend>Contrôles de démonstration</legend>
+        <label class="toggle"><input type="checkbox" id="ai-toggle" checked> Extraction disponible (simulé)</label>
+        <button id="reset-demo" type="button" class="ghost">Réinitialiser la démo</button>
+      </fieldset>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="phone" aria-label="WhatsApp simulé de la sage-femme">
-      <div class="phone-header">
-        <strong>WhatsApp (simulé)</strong>
-        <span id="sender-label"></span>
+  <main class="workspace">
+    <section class="panel queue-panel" aria-labelledby="queue-title">
+      <div class="panel-head">
+        <h2 id="queue-title">File de vérification</h2>
+        <span id="queue-count" class="muted"></span>
       </div>
-      <div id="thread" class="thread" aria-live="polite"></div>
-      <div class="composer">
-        <div class="composer-head">
-          <span>Photos de la fiche</span>
-          <label><input type="checkbox" id="show-all-media"> toutes les images</label>
-        </div>
-        <div id="media-grid" class="media-grid"></div>
-        <div class="composer-actions">
-          <button id="send-photos" type="button" class="primary" disabled>Envoyer</button>
-          <button id="replay-last" type="button" class="ghost" disabled
-                  title="Renvoie le dernier webhook avec le même identifiant de message">Rejouer le dernier webhook</button>
-        </div>
-      </div>
+      <ul id="queue" class="queue" aria-describedby="queue-title">
+        <li class="empty">Chargement des dossiers…</li>
+      </ul>
     </section>
 
-    <section class="backoffice" aria-label="Back-office">
-      <div class="queue-panel">
-        <h2>File de vérification</h2>
-        <ul id="queue" class="queue"></ul>
-      </div>
-      <div id="review" class="review-panel"></div>
-      <div class="timeline-panel">
-        <div class="timeline-head">
-          <h2>Suivi de la patiente</h2>
-          <select id="patient-select" aria-label="Patiente"></select>
-        </div>
-        <div id="timeline"></div>
-      </div>
+    <section id="review" class="panel review-panel" aria-labelledby="review-title" tabindex="-1">
+      <h2 id="review-title" class="sr-only">Dossier en cours</h2>
+      <p class="empty">Chargement…</p>
     </section>
+
+    <section class="panel timeline-panel" aria-labelledby="timeline-title">
+      <div class="panel-head">
+        <h2 id="timeline-title">Suivi de la patiente <span class="saved-badge">Enregistré en base</span></h2>
+        <label class="field-label" for="patient-select">Patiente
+          <select id="patient-select"></select>
+        </label>
+      </div>
+      <div id="timeline"><p class="empty">Chargement…</p></div>
+    </section>
+
+    <aside class="simulator" aria-labelledby="simulator-title">
+      <div class="simulator-head">
+        <span class="sim-tag">Simulateur</span>
+        <h2 id="simulator-title">Téléphone de la sage-femme</h2>
+        <p class="muted">Reproduit WhatsApp pour la démo : aucun vrai message n'est envoyé ni reçu.</p>
+      </div>
+      <div class="phone">
+        <div class="phone-header">
+          <strong>WhatsApp (simulé)</strong>
+          <span id="sender-label"></span>
+        </div>
+        <div id="thread" class="thread" role="log" aria-live="polite" aria-label="Messages échangés avec la sage-femme"
+             tabindex="0"></div>
+        <div class="composer">
+          <div id="reply-banner" class="reply-banner" hidden></div>
+          <div class="composer-head">
+            <span id="composer-hint">Choisissez les photos de la fiche, dans l'ordre</span>
+            <label><input type="checkbox" id="show-all-media"> toutes les images</label>
+          </div>
+          <div id="media-grid" class="media-grid" role="group" aria-label="Photos disponibles dans le simulateur"></div>
+          <div class="composer-actions">
+            <button id="send-photos" type="button" class="primary" disabled>Envoyer</button>
+            <button id="replay-last" type="button" class="ghost" disabled
+                    title="Renvoie le dernier webhook avec le même identifiant de message">Rejouer le dernier webhook</button>
+          </div>
+        </div>
+      </div>
+    </aside>
   </main>
 
-  <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="page-dialog" class="page-dialog" aria-labelledby="page-dialog-title">
+    <div class="dialog-head">
+      <h2 id="page-dialog-title">Page</h2>
+      <button id="page-dialog-close" type="button">Fermer</button>
+    </div>
+    <div id="page-dialog-body"></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script src="/app.js"></script>
 </body>
 </html>

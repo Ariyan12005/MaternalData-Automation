@@ -235,6 +235,30 @@ class QueueAndGroupingTest(FlowTestCase):
         self.assertEqual(self.service.tick(), [document_id])
         self.assertEqual(self.service.get_document(document_id)["document"]["status"], "NEEDS_REVIEW")
 
+    def test_unexpected_extractor_error_keeps_the_document_queued_and_logs_its_type_only(self):
+        fixtures = self.service.extractor
+
+        class Broken:
+            name = "fixture"
+
+            def extract(self, refs):
+                raise RuntimeError("Nom/Prénom : Inventée Exemple 0600000000")
+
+        self.service.extractor = Broken()
+        document_id = self.send(COVER, T2_T3_GRID)
+        self.clock.advance(10)
+        with self.assertLogs("dayone", "ERROR") as logs:
+            self.assertEqual(self.service.tick(), [])
+        text = "\n".join(logs.output)
+        self.assertIn("RuntimeError", text)
+        self.assertNotIn("Inventée", text)
+        self.assertTrue(all(record.exc_info is None for record in logs.records), "no traceback is logged")
+        self.assertEqual(self.service.get_document(document_id)["document"]["status"], "PENDING_AI")
+        self.assertEqual(self.service.extraction_retry(document_id)["reason"], "EXTRACTION_ERROR")
+
+        self.service.extractor = fixtures
+        self.assertEqual(self.service.tick(), [document_id])
+
     def test_pages_after_window_start_a_new_document(self):
         first = self.send(COVER)
         self.clock.advance(30)
