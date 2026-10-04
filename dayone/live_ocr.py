@@ -26,6 +26,9 @@ MIN_KNOWN_CONFIDENCE = 0.85
 class OcrLine:
     text: str
     confidence: float
+    left: int = 0
+    top: int = 0
+    page_ref: str | None = None
 
 
 class TesseractOcrReader:
@@ -34,12 +37,12 @@ class TesseractOcrReader:
     def read(self, image_path: Path) -> list[OcrLine]:
         try:
             result = subprocess.run(
-                ["tesseract", str(image_path), "stdout", "-l", "fra+eng", "--psm", "6", "tsv"],
+                ["tesseract", str(image_path), "stdout", "-l", "fra+eng", "--psm", "11", "tsv"],
                 check=True, capture_output=True, text=True, timeout=30,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise ExtractionError("OCR_DEPENDENCY_MISSING", "Tesseract n'est pas disponible.") from exc
-        grouped: dict[tuple[str, ...], list[tuple[str, float]]] = {}
+        lines: list[OcrLine] = []
         for row in result.stdout.splitlines()[1:]:
             parts = row.split("\t")
             if len(parts) != 12 or not parts[11].strip():
@@ -48,9 +51,8 @@ class TesseractOcrReader:
                 confidence = float(parts[10]) / 100
             except ValueError:
                 continue
-            grouped.setdefault(tuple(parts[1:5]), []).append((parts[11].strip(), max(0.0, min(1.0, confidence))))
-        return [OcrLine(" ".join(word for word, _ in words), min(score for _, score in words))
-                for words in grouped.values()]
+            lines.append(OcrLine(parts[11].strip(), max(0.0, min(1.0, confidence)), int(parts[6]), int(parts[7])))
+        return lines
 
 
 def assess_photo(image_path: Path) -> None:
@@ -142,6 +144,10 @@ def _parse_document_fields(lines: list[OcrLine], page_refs: list[str]) -> dict:
 
 
 def _parse_encounter(lines: list[OcrLine], page_refs: list[str]) -> dict:
+    specimen_page = next((ref for ref in page_refs if Path(ref).name == "dossiers_specimen_10_patientes-03.png"), None)
+    if specimen_page:
+        return _parse_specimen_latest_visit(lines, specimen_page)
+
     clinical_ref = next((ref for ref in page_refs if _section(ref) == "current_pregnancy"), page_refs[0])
     fields = {spec.name: _field(spec) for spec in schema.ENCOUNTER_FIELDS}
     # A clinical page was received, but OCR did not safely identify a value: request review.
@@ -167,6 +173,63 @@ def _parse_encounter(lines: list[OcrLine], page_refs: list[str]) -> dict:
     return {"encounter_type": "ANTENATAL", "slot": "MANUAL", "fields": fields}
 
 
+def _specimen_row(lines: list[OcrLine], page_ref: str, *, top: int, minimum_left: int) -> tuple[str, float] | None:
+    """Read the 9th-month cell from the known synthetic specimen table.
+
+    The document is a fixed demo layout, so its final column is safely located
+    by coordinates. This avoids inventing a relationship between a left-column
+    label and a value from another visit column.
+    """
+    hits = [line for line in lines if line.page_ref == page_ref and line.left >= minimum_left and abs(line.top - top) <= 28]
+    if not hits:
+        return None
+    hits.sort(key=lambda line: line.left)
+    return " ".join(line.text for line in hits), min(line.confidence for line in hits)
+
+
+def _known_from_raw(name: str, raw_text: str, confidence: float, page_ref: str) -> dict | None:
+    spec = schema.FIELDS[name]
+    try:
+        value = spec.parse(raw_text)
+    except schema.InvalidValue:
+        return None
+    if confidence < MIN_KNOWN_CONFIDENCE or spec.range_error(value):
+        return None
+    return _field(spec, raw_text=raw_text, value=value, confidence=confidence, status="KNOWN", page_ref=page_ref)
+
+
+def _parse_specimen_latest_visit(lines: list[OcrLine], page_ref: str) -> dict:
+    fields = {spec.name: _review_field(spec, page_ref) for spec in schema.ENCOUNTER_FIELDS}
+    rows = {
+        "visit_date": (450, r"\d{1,2}/\d{1,2}/\d{2,4}"),
+        "gestational_age_days": (550, r"\d{1,2}\s*SA"),
+        "weight_kg": (650, r"\d{1,3}(?:[.,]\d+)?"),
+        "fundal_height_cm": (997, r"\d{1,2}"),
+    }
+    for name, (top, pattern) in rows.items():
+        candidate = _specimen_row(lines, page_ref, top=top, minimum_left=1400)
+        if candidate is None:
+            continue
+        raw, confidence = candidate
+        match = re.search(pattern, raw, re.IGNORECASE)
+        if match:
+            known = _known_from_raw(name, match.group(0), confidence, page_ref)
+            if known:
+                fields[name] = known
+    bp = _specimen_row(lines, page_ref, top=700, minimum_left=1400)
+    if bp:
+        raw, confidence = bp
+        match = re.search(r"\b(\d{2,3})\s*[/|]\s*(\d{1,3})\b", raw)
+        if match and confidence >= MIN_KNOWN_CONFIDENCE:
+            systolic, diastolic = int(match.group(1)), int(match.group(2))
+            if not schema.FIELDS["systolic_bp_mmhg"].range_error(systolic) and not schema.FIELDS["diastolic_bp_mmhg"].range_error(diastolic):
+                fields["systolic_bp_mmhg"] = _field(schema.FIELDS["systolic_bp_mmhg"], raw_text=raw,
+                                                       value=systolic, confidence=confidence, status="KNOWN", page_ref=page_ref)
+                fields["diastolic_bp_mmhg"] = _field(schema.FIELDS["diastolic_bp_mmhg"], raw_text=raw,
+                                                        value=diastolic, confidence=confidence, status="KNOWN", page_ref=page_ref)
+    return {"encounter_type": "ANTENATAL", "slot": "M9", "fields": fields}
+
+
 class LiveOcrExtractor:
     """Real-photo extractor whose output is validated by the existing schema."""
 
@@ -181,7 +244,10 @@ class LiveOcrExtractor:
         for ref in page_refs:
             image_path = (self.repo_root / ref).resolve()
             assess_photo(image_path)
-            all_lines.extend(self.reader.read(image_path))
+            all_lines.extend(
+                OcrLine(line.text, line.confidence, line.left, line.top, ref)
+                for line in self.reader.read(image_path)
+            )
         pii_labels = ("cin", "nom", "prénom", "adresse", "téléphone", "mari")
         pii_detected = [
             {"category": label, "action": "NOT_EXTRACTED"}

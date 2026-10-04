@@ -58,6 +58,22 @@ class LiveOcrTest(unittest.TestCase):
         self.assertEqual(_section("data/Paper Registry/dossiers_specimen_10_patientes-02.png"), "identification")
         self.assertEqual(_section("data/Paper Registry/dossiers_specimen_10_patientes-03.png"), "current_pregnancy")
 
+    def test_specimen_latest_visit_uses_table_coordinates(self):
+        lines = [
+            OcrLine("18/01/2026", 0.95, 1428, 450), OcrLine("38", 0.95, 1427, 553), OcrLine("SA", 0.95, 1453, 548),
+            OcrLine("66.8", 0.95, 1426, 652), OcrLine("110/60", 0.95, 1427, 698), OcrLine("34", 0.95, 1427, 997),
+        ]
+        extractor = LiveOcrExtractor(self.root, reader=FakeReader(lines))
+        from unittest.mock import patch
+        with patch("dayone.live_ocr.assess_photo"):
+            draft = extractor.extract(["data/Paper Registry/dossiers_specimen_10_patientes-03.png"])
+        fields = draft["encounters"][0]["fields"]
+        self.assertEqual(draft["encounters"][0]["slot"], "M9")
+        self.assertEqual(fields["visit_date"]["value"], "2026-01-18")
+        self.assertEqual(fields["gestational_age_days"]["value"], 266)
+        self.assertEqual(fields["weight_kg"]["value"], 66.8)
+        self.assertEqual(fields["systolic_bp_mmhg"]["value"], 110)
+
 
 if __name__ == "__main__":
     unittest.main()
