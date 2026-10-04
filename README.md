@@ -53,6 +53,21 @@ python -m unittest discover -s tests -v
 
 The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 first-trimester visits). Use **Réinitialiser la démo** to start over.
 
+### Local real-photo OCR (PaddleOCR)
+
+The stable demo remains fixture-driven. On an Apple Silicon development machine
+where PaddleOCR is installed in `.venv-paddle312`, run real-photo OCR with:
+
+```powershell
+source .venv-paddle312/bin/activate
+python -m dayone --extractor paddle --db var/dayone-paddle.sqlite3
+```
+
+It first rejects very small, dark, or overexposed images with `RETAKE_REQUIRED`.
+For readable labelled values it returns `KNOWN`; unclear handwritten values are
+returned as `NEEDS_REVIEW` and must be confirmed or corrected by a person. The
+Paddle environment and downloaded models are local-only and must not be committed.
+
 ### Demo script
 
 1. **Midwife (simulated phone on the left):** select `1-1.jpg` then `1-5.jpg`, then press **Envoyer**. Each page gets an acknowledgment, and the document appears in the queue as a provisional group.
@@ -84,7 +99,7 @@ The database is created in `var/` and seeded with one patient (`PAT-000001`, 3 f
 | WhatsApp inbound | Browser phone panel posts `{sender_id, message_id, media_ref}` to `/api/whatsapp/messages`. Images must already be in `data/Paper Registry/` | Not started: Meta webhook format, signature check, media download |
 | WhatsApp outbound | Acknowledgments stored in the database and shown in the simulated thread | Not started: sending through the Cloud API |
 | Senders | One seeded demo number mapped to *C/S Sidi Smail* | Not started: sender registration |
-| Extraction | `FixtureExtractor` returns a hand-written draft for `1-1.jpg` + `1-4.jpg` or `1-1.jpg` + `1-5.jpg`; any other page set fails and goes to manual entry. Values are illustrative, not ground truth | Not started: OCR / vision model behind the same interface |
+| Extraction | Default `FixtureExtractor` returns a hand-written draft for the selected demo pages. Optional `LiveOcrExtractor` uses local PaddleOCR for real registry photos and sends unclear handwriting to review | OCR is local only; WhatsApp media download is not started |
 | AI outage | "IA disponible" toggle | Would be a real extractor timeout or failure |
 
 ### Open blockers and limitations
@@ -95,4 +110,4 @@ Tracked in [tasks.md](./tasks.md#blockers-and-open-gaps-keep-visible-until-resol
 - **No encryption at rest.** `var/dayone.sqlite3` is a plain SQLite file.
 - **No authentication.** Every `/api/*` route is open, including `POST /api/demo/reset`, which wipes the database. The reviewer name is free text. The server listens on `127.0.0.1` only by default and uses plain HTTP.
 - **Offline gaps.** There is no on-device encrypted storage, and no demo of "offline capture, then return of connectivity". The demo shows the platform-side equivalent instead (AI outage, then recovery). `SYNCED` is not implemented.
-- **Retake photo** is not implemented. Manual entry covers a single encounter and is only offered after a failed extraction.
+- **WhatsApp retake message** is not implemented. Local OCR raises `RETAKE_REQUIRED` for an unusable photo; Aymane's Cloud API adapter must send the actual message.

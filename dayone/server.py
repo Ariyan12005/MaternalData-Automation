@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .extraction import FixtureExtractor
+from .live_ocr import LiveOcrExtractor
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
 
@@ -24,10 +25,11 @@ MAX_BODY_BYTES = 64 * 1024
 log = logging.getLogger("dayone")
 
 
-def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8) -> DayOneService:
+def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extractor_mode: str = "fixture") -> DayOneService:
+    extractor = FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture" else LiveOcrExtractor(REPO_ROOT)
     return DayOneService(
         Store(db_path),
-        FixtureExtractor(REPO_ROOT / "fixtures"),
+        extractor,
         REPO_ROOT,
         grouping_window_seconds=grouping_window_seconds,
     )
@@ -186,16 +188,23 @@ def _run_worker(service: DayOneService, stop: threading.Event, interval: float =
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="DayOne fixture-driven prototype")
+    parser = argparse.ArgumentParser(description="DayOne maternal registry prototype")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db", default=str(REPO_ROOT / "var" / "dayone.sqlite3"))
     parser.add_argument("--window", type=int, default=8, help="multipage grouping window in seconds")
+    parser.add_argument("--extractor", choices=("fixture", "paddle"), default="fixture",
+                        help="fixture for the stable demo; paddle for local real-photo OCR")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    service = build_service(args.db, grouping_window_seconds=args.window)
-    service.ensure_seed()
+    service = build_service(args.db, grouping_window_seconds=args.window, extractor_mode=args.extractor)
+    # Fixture mode includes a pre-confirmed history for the visual demo.  Real
+    # OCR always requires a human review, so it must start with an empty demo.
+    if args.extractor == "paddle":
+        service.reset_demo(with_history=False)
+    else:
+        service.ensure_seed()
 
     server = ThreadingHTTPServer((args.host, args.port), make_handler(Api(service)))
     stop = threading.Event()
