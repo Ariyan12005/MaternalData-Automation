@@ -161,6 +161,16 @@ def _review_field(spec: schema.FieldSpec, page_ref: str) -> dict:
 
 def _section(page_ref: str) -> str:
     name = Path(page_ref).name
+    if name.startswith("dossiers_specimen_10_patientes-"):
+        page_number = name.split("-")[-1].split(".")[0]
+        return {
+            "01": "cover",
+            "02": "identification",
+            "03": "current_pregnancy",
+            "04": "delivery_not_in_v1",
+            "05": "postpartum_mother_not_in_v1",
+            "06": "postpartum_newborn_not_in_v1",
+        }.get(page_number, "unknown")
     return {
         "1-1.jpg": "cover",
         "1-2.jpg": "identification",

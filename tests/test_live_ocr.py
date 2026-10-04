@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dayone import schema
 from dayone.extraction import ExtractionError
-from dayone.live_ocr import LiveOcrExtractor, OcrLine
+from dayone.live_ocr import LiveOcrExtractor, OcrLine, _section
 
 
 class FakeReader:
@@ -54,6 +54,11 @@ class LiveOcrTest(unittest.TestCase):
         with self.assertRaises(ExtractionError) as caught:
             extractor.extract(["data/Paper Registry/1-4.jpg"])
         self.assertEqual(caught.exception.code, "RETAKE_REQUIRED")
+
+    def test_specimen_page_layouts_are_recognized(self):
+        self.assertEqual(_section("data/Paper Registry/dossiers_specimen_10_patientes-01.png"), "cover")
+        self.assertEqual(_section("data/Paper Registry/dossiers_specimen_10_patientes-02.png"), "identification")
+        self.assertEqual(_section("data/Paper Registry/dossiers_specimen_10_patientes-03.png"), "current_pregnancy")
 
 
 if __name__ == "__main__":
