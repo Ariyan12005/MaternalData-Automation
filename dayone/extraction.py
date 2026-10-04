@@ -12,10 +12,11 @@ from . import schema
 class ExtractionError(Exception):
     """Permanent failure for this page set; the document goes to PROCESSING_FAILED."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, page_ref: str | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.page_ref = page_ref
 
 
 class FixtureExtractor:

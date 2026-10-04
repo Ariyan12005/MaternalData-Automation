@@ -79,6 +79,11 @@ input, select { font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--
 }
 .composer-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
 .composer-actions button { font-size: 0.8rem; }
+.thumb.capture img { outline: 2px solid #075e54; }
+.camera-dialog { border: none; border-radius: 12px; padding: 0.8rem; max-width: 92vw; }
+.camera-dialog video { width: min(640px, 86vw); border-radius: 8px; background: #000; display: block; }
+.page .retake { font-size: 0.72rem; color: var(--warn); }
+
 
 /* back-office */
 .backoffice { display: grid; grid-template-columns: 230px 1fr; grid-template-rows: auto auto; gap: 1rem; min-width: 0; }
@@ -100,6 +105,7 @@ input, select { font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--
 .chip { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: #eef0f3; white-space: nowrap; }
 .chip.s-NEEDS_REVIEW, .chip.s-DUPLICATE_SUSPECTED { background: var(--warn-soft); color: var(--warn); }
 .chip.s-PROCESSING_FAILED { background: var(--danger-soft); color: var(--danger); }
+.chip.s-MANUAL_REVIEW_REQUIRED { background: var(--warn-soft); color: var(--warn); }
 .chip.s-REGISTERED { background: var(--accent-soft); color: var(--accent); }
 .chip.s-VALIDATED, .chip.s-PATIENT_MATCHED { background: #e8f0fe; color: #1d4ed8; }
 .chip.grouping-PROVISIONAL { background: var(--warn-soft); color: var(--warn); }

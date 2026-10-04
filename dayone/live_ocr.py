@@ -243,8 +243,11 @@ class LiveOcrExtractor:
                                   "L'OCR ne lit que les pages spécimen de data/Paper Registry : "
                                   f"{', '.join(Path(ref).name for ref in others)}. Saisissez ce dossier à la main.")
         images = [self.media(ref) for ref in page_refs]
-        for data in images:
-            assess_photo(data)
+        for ref, data in zip(page_refs, images):
+            try:
+                assess_photo(data)
+            except ExtractionError as exc:
+                raise ExtractionError(exc.code, exc.message, page_ref=ref) from exc
 
         jobs = [(index, lang) for index in range(len(images)) for lang in ("fra", "eng")]
         with ThreadPoolExecutor(min(self.workers, len(jobs) or 1)) as pool:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import linking, schema
 from .extraction import ExtractionError
+from .media import MediaError, MediaStore
 from .store import Store, next_id
 
 log = logging.getLogger("dayone.service")
@@ -67,11 +68,13 @@ def _dumps(value) -> str:
 
 
 class DayOneService:
-    def __init__(self, store: Store, extractor, repo_root: Path, *, grouping_window_seconds: int = 8, clock=utcnow):
+    def __init__(self, store: Store, extractor, repo_root: Path, *, grouping_window_seconds: int = 8, clock=utcnow,
+                 media: MediaStore | None = None):
         self.store = store
         self.extractor = extractor
         self.repo_root = Path(repo_root).resolve()
         self.media_dir = (self.repo_root / "data" / "Paper Registry").resolve()
+        self.media = media
         self.window = timedelta(seconds=grouping_window_seconds)
         self.clock = clock
 
@@ -150,6 +153,7 @@ class DayOneService:
         return [p.relative_to(self.repo_root).as_posix() for p in sorted(files, key=sort_key)]
 
     def resolve_media(self, media_ref: str) -> Path:
+        """Path of a dataset image (read-only files under data/Paper Registry/)."""
         if not isinstance(media_ref, str) or not media_ref:
             raise Invalid("MEDIA_REQUIRED", "Référence d'image manquante.")
         path = (self.repo_root / media_ref).resolve()
@@ -157,12 +161,32 @@ class DayOneService:
             raise NotFound("MEDIA_NOT_FOUND", "Image introuvable.")
         return path
 
+    def read_media(self, media_ref: str) -> bytes:
+        """Image bytes for a dataset file or an uploaded photo (decrypted in memory)."""
+        if MediaStore.is_upload(media_ref):
+            if self.media is None:
+                raise NotFound("MEDIA_NOT_FOUND", "Image introuvable.")
+            try:
+                return self.media.get(media_ref)
+            except MediaError as exc:
+                raise NotFound(exc.code, exc.message) from None
+        return self.resolve_media(media_ref).read_bytes()
+
+    def upload_photo(self, data: bytes) -> dict:
+        """Store a photo taken with the phone camera; returns the reference to send in the message."""
+        if self.media is None:
+            raise Invalid("UPLOAD_DISABLED", "Le dépôt de photos n'est pas configuré.")
+        try:
+            return {"media_ref": self.media.put(data)}
+        except MediaError as exc:
+            raise Invalid(exc.code, exc.message) from None
+
     # ------------------------------------------------------------------ ingest
 
     def ingest_photo(self, *, sender_id: str, message_id: str, media_ref: str) -> dict:
         if not isinstance(message_id, str) or not 1 <= len(message_id) <= 200:
             raise Invalid("MESSAGE_ID_REQUIRED", "Identifiant de message WhatsApp manquant.")
-        digest = hashlib.sha256(self.resolve_media(media_ref).read_bytes()).hexdigest()
+        digest = hashlib.sha256(self.read_media(media_ref)).hexdigest()
         now = self.clock()
         with self.store.tx() as db:
             duplicate = db.execute(
@@ -174,6 +198,15 @@ class DayOneService:
             sender = db.execute("SELECT * FROM senders WHERE sender_id = ?", (sender_id,)).fetchone()
             if sender is None:
                 raise Forbidden("UNKNOWN_SENDER", "Numéro non enregistré auprès d'un établissement.")
+
+            retake = db.execute(
+                "SELECT p.* FROM pages p JOIN documents d USING (document_id) WHERE p.sender_id = ? "
+                "AND p.retake_requested_at IS NOT NULL AND p.superseded_by IS NULL "
+                "AND d.status = 'MANUAL_REVIEW_REQUIRED' ORDER BY p.retake_requested_at, p.page_id LIMIT 1",
+                (sender_id,),
+            ).fetchone()
+            if retake is not None:
+                return self._replace_page(db, retake, message_id, media_ref, digest, now)
 
             document = self._open_document(db, sender_id, now)
             if document is None:
@@ -189,7 +222,8 @@ class DayOneService:
                 db.execute("UPDATE documents SET last_page_at = ?, updated_at = ? WHERE document_id = ?",
                            (_iso(now), _iso(now), document_id))
 
-            position = db.execute("SELECT COUNT(*) FROM pages WHERE document_id = ?", (document_id,)).fetchone()[0] + 1
+            position = db.execute("SELECT COUNT(*) FROM pages WHERE document_id = ? AND superseded_by IS NULL",
+                                  (document_id,)).fetchone()[0] + 1
             page_id = next_id(db, "PAGE")
             db.execute(
                 "INSERT INTO pages(page_id, document_id, source_message_id, sender_id, media_ref, media_sha256, "
@@ -204,6 +238,59 @@ class DayOneService:
             self._event(db, document_id, "PAGE_RECEIVED", "system", now, {"page_id": page_id, "position": position})
         return {"page_id": page_id, "document_id": document_id, "position": position,
                 "duplicate": False, "acknowledgment": acknowledgment}
+
+    def _replace_page(self, db, old, message_id: str, media_ref: str, digest: str, now: datetime) -> dict:
+        """The photo answers a retake request: it takes the old page's place and extraction restarts."""
+        document_id = old["document_id"]
+        page_id = next_id(db, "PAGE")
+        db.execute(
+            "INSERT INTO pages(page_id, document_id, source_message_id, sender_id, media_ref, media_sha256, "
+            "position, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (page_id, document_id, message_id, old["sender_id"], media_ref, digest, old["position"], _iso(now)),
+        )
+        db.execute("UPDATE pages SET superseded_by = ? WHERE page_id = ?", (page_id, old["page_id"]))
+        acknowledgment = f"Reçu : nouvelle photo de la page {old['position']}. Merci, le traitement reprend."
+        db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'IN', NULL, ?, ?)",
+                   (old["sender_id"], media_ref, _iso(now)))
+        db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'OUT', ?, NULL, ?)",
+                   (old["sender_id"], acknowledgment, _iso(now)))
+        self._event(db, document_id, "PAGE_RETAKEN", "system", now,
+                    {"old_page_id": old["page_id"], "page_id": page_id, "position": old["position"]})
+        pending = db.execute(
+            "SELECT COUNT(*) FROM pages WHERE document_id = ? AND retake_requested_at IS NOT NULL "
+            "AND superseded_by IS NULL", (document_id,)).fetchone()[0]
+        if pending == 0:
+            db.execute("UPDATE documents SET draft_json = NULL, selection_json = NULL, failure_reason = NULL, "
+                       "revision = revision + 1, updated_at = ? WHERE document_id = ?", (_iso(now), document_id))
+            self._set_status(db, document_id, "PENDING_AI", now)
+        return {"page_id": page_id, "document_id": document_id, "position": old["position"],
+                "duplicate": False, "acknowledgment": acknowledgment, "replaced_page_id": old["page_id"]}
+
+    def request_retake(self, page_id: str, *, reviewer: str, reason: str | None = None) -> dict:
+        """Ask the midwife for a new photo of one page; the document waits until it arrives."""
+        reviewer = self._reviewer(reviewer) if reviewer != "system" else reviewer
+        reason = (reason or "").strip()[:200] or None
+        now = self.clock()
+        with self.store.tx() as db:
+            page = db.execute("SELECT * FROM pages WHERE page_id = ? AND superseded_by IS NULL", (page_id,)).fetchone()
+            if page is None:
+                raise NotFound("PAGE_NOT_FOUND", "Page introuvable.")
+            document = self._load_document(db, page["document_id"])
+            if document["status"] in ("REGISTERED", "CAPTURED"):
+                raise Conflict("RETAKE_NOT_ALLOWED", "Impossible de demander une nouvelle photo dans cet état.")
+            self._request_retake(db, page, reason, reviewer, now)
+        return self.get_document(page["document_id"])
+
+    def _request_retake(self, db, page, reason: str | None, actor: str, now: datetime) -> None:
+        if page["retake_requested_at"] is None:
+            db.execute("UPDATE pages SET retake_requested_at = ?, retake_reason = ? WHERE page_id = ?",
+                       (_iso(now), reason, page["page_id"]))
+            body = f"Merci de reprendre la photo de la page {page['position']}" + (f" : {reason}" if reason else ".")
+            db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'OUT', ?, NULL, ?)",
+                       (page["sender_id"], body, _iso(now)))
+            self._event(db, page["document_id"], "RETAKE_REQUESTED", actor, now,
+                        {"page_id": page["page_id"], "position": page["position"], "reason": reason})
+        self._set_status(db, page["document_id"], "MANUAL_REVIEW_REQUIRED", now, actor=actor)
 
     def _open_document(self, db, sender_id: str, now: datetime):
         row = db.execute(
@@ -249,14 +336,14 @@ class DayOneService:
     def process_document(self, document_id: str) -> bool:
         with self.store.read() as db:
             refs = self._page_refs(db, document_id)
-        draft, failure = None, None
+        draft, failure, failure_page = None, None, None
         try:
             draft = self.extractor.extract(refs)
             problems = schema.validate_draft(draft)
             if problems:
                 draft, failure = None, ("INVALID_EXTRACTION", problems[0])
         except ExtractionError as exc:
-            failure = (exc.code, exc.message)
+            failure, failure_page = (exc.code, exc.message), exc.page_ref
         except Exception:
             log.exception("extraction error for %s; will retry", document_id)
             return False
@@ -266,6 +353,13 @@ class DayOneService:
             document = db.execute("SELECT * FROM documents WHERE document_id = ?", (document_id,)).fetchone()
             if document is None or document["status"] != "PENDING_AI" or self._page_refs(db, document_id) != refs:
                 return False
+            if draft is None and failure[0] == "RETAKE_REQUIRED" and failure_page is not None:
+                page = db.execute("SELECT * FROM pages WHERE document_id = ? AND media_ref = ? AND superseded_by IS NULL",
+                                  (document_id, failure_page)).fetchone()
+                if page is not None:
+                    db.execute("UPDATE documents SET failure_reason = ? WHERE document_id = ?", (failure[0], document_id))
+                    self._request_retake(db, page, failure[1], "system", now)
+                    return True
             if draft is None:
                 db.execute("UPDATE documents SET failure_reason = ? WHERE document_id = ?", (failure[0], document_id))
                 self._set_status(db, document_id, "PROCESSING_FAILED", now,
@@ -506,8 +600,12 @@ class DayOneService:
             if page is None:
                 raise NotFound("PAGE_NOT_FOUND", "Page introuvable.")
             source = self._load_document(db, page["document_id"])
+            if source["status"] == "MANUAL_REVIEW_REQUIRED":
+                raise Conflict("RETAKE_PENDING", "Une nouvelle photo est attendue pour ce dossier.")
             if source["status"] == "REGISTERED":
                 raise Conflict("ALREADY_REGISTERED", "Ce dossier est déjà enregistré.")
+            if page["superseded_by"] is not None:
+                raise Conflict("PAGE_REPLACED", "Cette page a été remplacée par une nouvelle photo.")
             if target_document_id:
                 if target_document_id == source["document_id"]:
                     raise Invalid("SAME_DOCUMENT", "La page est déjà dans ce dossier.")
@@ -517,7 +615,8 @@ class DayOneService:
                 if target["facility_id"] != source["facility_id"]:
                     raise Forbidden("OTHER_FACILITY", "Le dossier cible appartient à un autre établissement.")
             else:
-                if db.execute("SELECT COUNT(*) FROM pages WHERE document_id = ?", (source["document_id"],)).fetchone()[0] == 1:
+                if db.execute("SELECT COUNT(*) FROM pages WHERE document_id = ? AND superseded_by IS NULL",
+                              (source["document_id"],)).fetchone()[0] == 1:
                     raise Invalid("ONLY_PAGE", "Cette page est déjà seule dans son dossier.")
                 target_document_id = next_id(db, "DOC")
                 db.execute(
@@ -527,7 +626,7 @@ class DayOneService:
                 )
                 self._event(db, target_document_id, "STATUS_CHANGED", reviewer, now, {"from": None, "to": "PENDING_AI"})
 
-            position = db.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM pages WHERE document_id = ?",
+            position = db.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM pages WHERE document_id = ? AND superseded_by IS NULL",
                                   (target_document_id,)).fetchone()[0]
             db.execute("UPDATE pages SET document_id = ?, position = ? WHERE page_id = ?",
                        (target_document_id, position, page_id))
@@ -537,7 +636,8 @@ class DayOneService:
         return {"page_id": page_id, "from_document_id": source["document_id"], "to_document_id": target_document_id}
 
     def _reset_after_regroup(self, db, document_id, page_id, from_id, to_id, reviewer, now) -> None:
-        pages = db.execute("SELECT page_id FROM pages WHERE document_id = ? ORDER BY position", (document_id,)).fetchall()
+        pages = db.execute("SELECT page_id FROM pages WHERE document_id = ? AND superseded_by IS NULL ORDER BY position",
+                           (document_id,)).fetchall()
         detail = {"page_id": page_id, "from": from_id, "to": to_id}
         if not pages:
             db.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
@@ -564,7 +664,7 @@ class DayOneService:
         with self.store.read() as db:
             rows = db.execute(
                 "SELECT d.*, s.label AS sender_label, "
-                "(SELECT COUNT(*) FROM pages p WHERE p.document_id = d.document_id) AS page_count "
+                "(SELECT COUNT(*) FROM pages p WHERE p.document_id = d.document_id AND p.superseded_by IS NULL) AS page_count "
                 "FROM documents d JOIN senders s USING (sender_id) ORDER BY d.document_id DESC"
             ).fetchall()
         items = []
@@ -585,8 +685,8 @@ class DayOneService:
         with self.store.read() as db:
             document = self._load_document(db, document_id)
             pages = [dict(row) for row in db.execute(
-                "SELECT page_id, position, media_ref, received_at, source_message_id FROM pages "
-                "WHERE document_id = ? ORDER BY position", (document_id,))]
+                "SELECT page_id, position, media_ref, received_at, source_message_id, retake_requested_at, retake_reason "
+                "FROM pages WHERE document_id = ? AND superseded_by IS NULL ORDER BY position", (document_id,))]
             draft = _loads(document["draft_json"])
             selection = _loads(document["selection_json"])
             review = None
@@ -635,6 +735,8 @@ class DayOneService:
             return "WAITING_AI"
         if status == "PROCESSING_FAILED":
             return "FAILED"
+        if status == "MANUAL_REVIEW_REQUIRED":
+            return "WAITING_RETAKE"
         if status == "REGISTERED":
             return "DONE"
         if blocking:
@@ -718,7 +820,8 @@ class DayOneService:
     @staticmethod
     def _page_refs(db, document_id: str) -> list[str]:
         return [row["media_ref"] for row in db.execute(
-            "SELECT media_ref FROM pages WHERE document_id = ? ORDER BY position", (document_id,))]
+            "SELECT media_ref FROM pages WHERE document_id = ? AND superseded_by IS NULL ORDER BY position",
+            (document_id,))]
 
     @staticmethod
     def _save_draft(db, document_id: str, draft: dict, now: datetime) -> None:

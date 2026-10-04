@@ -13,8 +13,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import crypto
 from .extraction import FixtureExtractor
 from .live_ocr import LiveOcrExtractor, PaddleOcrReader, TesseractOcrReader
+from .media import MAX_PHOTO_BYTES, MediaStore
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
 
@@ -25,18 +27,24 @@ MAX_BODY_BYTES = 64 * 1024
 log = logging.getLogger("dayone")
 
 
-def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extractor_mode: str = "fixture") -> DayOneService:
+def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extractor_mode: str = "fixture",
+                  encrypt: bool = True) -> DayOneService:
     readers = {"tesseract": TesseractOcrReader, "paddleocr": PaddleOcrReader}
     if extractor_mode != "fixture" and extractor_mode not in readers:
         raise ValueError("Unsupported extractor: " + extractor_mode)
-    extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
-                 else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode]()))
-    return DayOneService(
-        Store(db_path),
-        extractor,
+    var_dir = Path(db_path).parent
+    keys = crypto.ciphers(crypto.load_master_key(var_dir)) if encrypt else {}
+    media = MediaStore(var_dir / "media", keys.get("media"))
+    service = DayOneService(
+        Store(db_path, keys.get("database")),
+        None,
         REPO_ROOT,
         grouping_window_seconds=grouping_window_seconds,
+        media=media,
     )
+    service.extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
+                         else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode](), media=service.read_media))
+    return service
 
 
 class Api:
@@ -49,6 +57,9 @@ class Api:
             ("POST", r"/api/demo/reset", self._reset),
             ("GET", r"/api/senders", lambda m, q, b, r: s.list_senders()),
             ("GET", r"/api/media", lambda m, q, b, r: s.list_media()),
+            ("POST", r"/api/media", lambda m, q, b, r: s.upload_photo(b)),
+            ("POST", r"/api/pages/(PAGE-\d+)/retake", lambda m, q, b, r: s.request_retake(
+                m[1], reviewer=r, reason=b.get("reason"))),
             ("POST", r"/api/whatsapp/messages", lambda m, q, b, r: s.ingest_photo(
                 sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"))),
             ("GET", r"/api/whatsapp/thread", lambda m, q, b, r: s.thread(_query(q, "sender_id"))),
@@ -112,10 +123,12 @@ def make_handler(api: Api):
             url = urlparse(self.path)
             if url.path.startswith("/api/"):
                 body = {}
-                if method == "POST":
+                if method == "POST" and url.path == "/api/media":
+                    body = self._read_bytes(MAX_PHOTO_BYTES)
+                elif method == "POST":
                     body = self._read_json()
-                    if body is None:
-                        return
+                if body is None:
+                    return
                 status, payload = api.dispatch(method, url.path, parse_qs(url.query), body,
                                                self.headers.get("X-Reviewer"))
                 self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json")
@@ -125,6 +138,13 @@ def make_handler(api: Api):
                 self._send_static(url.path)
             else:
                 self._send(HTTPStatus.METHOD_NOT_ALLOWED, b"", "text/plain")
+
+        def _read_bytes(self, limit: int):
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > limit:
+                self._send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE", "Photo trop volumineuse.")
+                return None
+            return self.rfile.read(length) if length else b""
 
         def _read_json(self):
             length = int(self.headers.get("Content-Length") or 0)
@@ -147,11 +167,11 @@ def make_handler(api: Api):
 
         def _send_media(self, media_ref: str) -> None:
             try:
-                path = api.service.resolve_media(media_ref)
+                data = api.service.read_media(media_ref)
             except ServiceError:
                 self._send(HTTPStatus.NOT_FOUND, b"", "text/plain")
                 return
-            self._send(HTTPStatus.OK, path.read_bytes(), mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+            self._send(HTTPStatus.OK, data, mimetypes.guess_type(media_ref)[0] or "application/octet-stream",
                        cache=True)
 
         def _send_static(self, path: str) -> None:

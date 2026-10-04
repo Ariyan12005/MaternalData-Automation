@@ -30,6 +30,8 @@
         </div>
         <div id="media-grid" class="media-grid"></div>
         <div class="composer-actions">
+          <button id="open-camera" type="button" title="Photographier une page avec la caméra">Caméra</button>
+          <input id="camera-file" type="file" accept="image/jpeg,image/png" capture="environment" hidden>
           <button id="send-photos" type="button" class="primary" disabled>Envoyer</button>
           <button id="replay-last" type="button" class="ghost" disabled
                   title="Renvoie le dernier webhook avec le même identifiant de message">Rejouer le dernier webhook</button>
@@ -52,6 +54,15 @@
       </div>
     </section>
   </main>
+
+  <dialog id="camera-dialog" class="camera-dialog" aria-label="Caméra">
+    <video id="camera-video" autoplay playsinline muted></video>
+    <p class="muted">Cadrez toute la page, à plat et bien éclairée. Les photos caméra ne passent pas par l'OCR : elles vont en saisie manuelle.</p>
+    <div class="actions">
+      <button id="camera-shoot" type="button" class="primary">Prendre la photo</button>
+      <button id="camera-close" type="button" class="ghost">Fermer</button>
+    </div>
+  </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="/app.js"></script>

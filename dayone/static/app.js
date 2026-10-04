@@ -7,6 +7,7 @@ const DOC_STATUS = {
   CAPTURED: "Réception des pages", PENDING_AI: "En attente IA", AI_PROCESSED: "Traité par l'IA",
   NEEDS_REVIEW: "À vérifier", VALIDATED: "Champs validés", PATIENT_MATCHED: "Patiente choisie",
   REGISTERED: "Enregistré", PROCESSING_FAILED: "Échec extraction", DUPLICATE_SUSPECTED: "Doublon suspecté",
+  MANUAL_REVIEW_REQUIRED: "Photo à reprendre",
 };
 const FIELD_STATUS = {
   KNOWN: "lu", NEEDS_REVIEW: "à vérifier", ILLEGIBLE: "illisible", NOT_PROVIDED: "non renseigné",
@@ -43,6 +44,8 @@ const state = {
   media: [],
   showAllMedia: false,
   selectedMedia: [],
+  captures: [],
+  cameraStream: null,
   lastMessage: null,
   documentId: null,
   detail: null,
@@ -200,6 +203,12 @@ function startManualEntry() {
   return act(() => api("POST", `/api/documents/${state.documentId}/manual-entry`, {}));
 }
 
+function requestRetake(page) {
+  const reason = window.prompt(`Motif pour la sage-femme (page ${page.position}) :`, "photo floue ou coupée");
+  if (reason === null) return;
+  act(() => api("POST", `/api/pages/${page.page_id}/retake`, { reason }));
+}
+
 function movePage(pageId, target) {
   return act(() => api("POST", `/api/pages/${pageId}/move`, { target_document_id: target }));
 }
@@ -246,6 +255,61 @@ async function replayLastMessage() {
     notify(error.message, "error");
   }
   await refreshAll(true);
+}
+
+// ---------------------------------------------------------------- camera
+
+async function uploadPhoto(blob) {
+  const response = await fetch("/api/media", {
+    method: "POST",
+    headers: { "Content-Type": blob.type || "image/jpeg", "X-Reviewer": $("#reviewer").value.trim() },
+    body: blob,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || `Erreur ${response.status}`);
+  state.captures = [...state.captures.filter((ref) => ref !== data.media_ref), data.media_ref];
+  if (!state.selectedMedia.includes(data.media_ref)) state.selectedMedia = [...state.selectedMedia, data.media_ref];
+  renderMedia();
+  notify("Photo prête : appuyez sur Envoyer.");
+}
+
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $("#camera-file").click();  // phones open the camera app, computers a file picker
+    return;
+  }
+  try {
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 2560 } }, audio: false,
+    });
+  } catch (error) {
+    notify("Caméra indisponible : choisissez un fichier.", "error");
+    $("#camera-file").click();
+    return;
+  }
+  $("#camera-video").srcObject = state.cameraStream;
+  $("#camera-dialog").showModal();
+}
+
+function closeCamera() {
+  state.cameraStream?.getTracks().forEach((track) => track.stop());
+  state.cameraStream = null;
+  if ($("#camera-dialog").open) $("#camera-dialog").close();
+}
+
+async function shootPhoto() {
+  const video = $("#camera-video");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  closeCamera();
+  try {
+    await uploadPhoto(blob);
+  } catch (error) {
+    notify(error.message, "error");
+  }
 }
 
 // ---------------------------------------------------------------- refresh
@@ -335,12 +399,14 @@ function renderThread(messages) {
 }
 
 function renderMedia() {
-  const list = state.showAllMedia ? state.media : state.media.filter((ref) => SPECIMEN_PATIENT_ONE.test(ref));
+  const dataset = state.showAllMedia ? state.media : state.media.filter((ref) => SPECIMEN_PATIENT_ONE.test(ref));
+  const list = [...state.captures, ...dataset];
   $("#media-grid").replaceChildren(...list.map((ref) => {
     const order = state.selectedMedia.indexOf(ref);
+    const capture = state.captures.includes(ref);
     return el("button", {
       type: "button",
-      class: `thumb ${order >= 0 ? "selected" : ""}`,
+      class: `thumb ${order >= 0 ? "selected" : ""} ${capture ? "capture" : ""}`,
       title: basename(ref),
       onclick: () => {
         state.selectedMedia = order >= 0 ? state.selectedMedia.filter((r) => r !== ref) : [...state.selectedMedia, ref];
@@ -348,7 +414,7 @@ function renderMedia() {
       },
     },
     el("img", { src: mediaUrl(ref), alt: basename(ref), loading: "lazy" }),
-    el("span", {}, basename(ref)),
+    el("span", {}, capture ? `photo ${state.captures.indexOf(ref) + 1}` : basename(ref)),
     order >= 0 ? el("b", { class: "order" }, order + 1) : null);
   }));
   const send = $("#send-photos");
@@ -413,6 +479,9 @@ function renderPages(d) {
     el("a", { href: mediaUrl(page.media_ref), target: "_blank", rel: "noopener" },
       el("img", { src: mediaUrl(page.media_ref), alt: basename(page.media_ref) })),
     el("figcaption", {}, `p.${page.position} · ${basename(page.media_ref)}`),
+    page.retake_requested_at ? el("span", { class: "retake" }, "nouvelle photo demandée") : null,
+    locked || page.retake_requested_at || d.document.status === "CAPTURED" ? null
+      : button("Reprendre la photo", () => requestRetake(page), "small"),
     locked ? null : el("select", {
       "aria-label": `Déplacer la page ${page.position}`,
       disabled: state.busy,
@@ -480,6 +549,13 @@ function historyMessage(event, d) {
       `Pages regroupées par ${event.actor} (${detail.page_id} : ${detail.from} → ${detail.to}). `
       + `${detail.discarded_reviews} vérification(s) annulée(s), nouvelle extraction.`);
   }
+  if (event.type === "RETAKE_REQUESTED") {
+    return el("div", { class: "msg note" }, `Nouvelle photo de la page ${detail.position} demandée par ${event.actor}`
+      + (detail.reason ? ` : « ${detail.reason} »` : "") + ".");
+  }
+  if (event.type === "PAGE_RETAKEN") {
+    return el("div", { class: "msg note" }, `Nouvelle photo reçue pour la page ${detail.position}.`);
+  }
   if (event.type === "MANUAL_ENTRY_STARTED") {
     return el("div", { class: "msg note" }, `Saisie manuelle démarrée par ${event.actor}.`);
   }
@@ -499,6 +575,11 @@ function currentStep(d) {
     return botMessage(state.system.ai_available
       ? "En file d'attente pour l'extraction…"
       : "IA indisponible : le dossier attend dans la file. Rien n'est perdu ; il sera traité au retour de l'IA.");
+  }
+  if (step === "WAITING_RETAKE") {
+    const pages = d.pages.filter((p) => p.retake_requested_at).map((p) => p.position).join(", ");
+    return botMessage(`En attente d'une nouvelle photo de la page ${pages} : le message a été envoyé à la sage-femme. `
+      + "L'extraction reprendra automatiquement à la réception.");
   }
   if (step === "FAILED") {
     return el("div", { class: "msg bot question" },
@@ -771,6 +852,15 @@ async function init() {
   });
   $("#show-all-media").addEventListener("change", (event) => { state.showAllMedia = event.target.checked; renderMedia(); });
   $("#send-photos").addEventListener("click", sendPhotos);
+  $("#open-camera").addEventListener("click", openCamera);
+  $("#camera-shoot").addEventListener("click", shootPhoto);
+  $("#camera-close").addEventListener("click", closeCamera);
+  $("#camera-dialog").addEventListener("close", closeCamera);
+  $("#camera-file").addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    event.target.value = "";
+    if (file) await uploadPhoto(file).catch((error) => notify(error.message, "error"));
+  });
   $("#replay-last").addEventListener("click", replayLastMessage);
   $("#patient-select").addEventListener("change", (event) => { state.patientId = event.target.value; refreshTimeline(true); });
   $("#reset-demo").addEventListener("click", async () => {
