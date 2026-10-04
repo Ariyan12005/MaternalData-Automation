@@ -10,6 +10,7 @@ import re
 import secrets
 import tempfile
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1362,10 +1363,22 @@ class DayOneService:
         Transitions status from REGISTERED to SYNCED. Idempotent on retry."""
         reviewer = self._reviewer(reviewer)
         now = self.clock()
+        target_name = "Registre National des Dossiers Maternels (Simulé)"
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
             if document["status"] == "SYNCED":
-                return {"document_id": document_id, "status": "SYNCED", "synced": True, "replayed": True}
+                row = db.execute("SELECT ack_id, ack_signature, synced_at FROM central_sync_log WHERE document_id = ?",
+                                 (document_id,)).fetchone()
+                ack = {
+                    "ack_id": row["ack_id"] if row else "REPLAYED",
+                    "status": "ACKNOWLEDGED_SIMULATED",
+                    "ack_signature": row["ack_signature"] if row else "",
+                    "synced_at": row["synced_at"] if row else document["updated_at"],
+                }
+                return {
+                    "document_id": document_id, "status": "SYNCED", "synced": True, "replayed": True,
+                    "target": target_name, "ack": ack,
+                }
             if document["status"] != "REGISTERED":
                 raise Conflict("NOT_REGISTERED", "Seuls les dossiers enregistrés peuvent être synchronisés.",
                                {"status": document["status"]})
@@ -1384,12 +1397,42 @@ class DayOneService:
                 "visits": visits,
                 "synced_at": _iso(now),
             }
+
+            ack_id = f"ACK-REG-SIM-{uuid.uuid4().hex[:12].upper()}"
+            sig_payload = f"{document_id}:{patient_id}:{_iso(now)}".encode("utf-8")
+            ack_signature = hmac.new(b"simulated-central-registry-secret", sig_payload, hashlib.sha256).hexdigest()
+            ack_data = {
+                "ack_id": ack_id,
+                "status": "ACKNOWLEDGED_SIMULATED",
+                "target": target_name,
+                "ack_signature": ack_signature,
+                "synced_at": _iso(now),
+            }
+
             if central_sink is not None:
-                central_sink(sync_payload)
+                try:
+                    sink_res = central_sink(sync_payload)
+                    if isinstance(sink_res, dict) and "ack_id" in sink_res:
+                        ack_data["ack_id"] = sink_res["ack_id"]
+                except Exception as exc:
+                    self._event(db, document_id, "SYNC_FAILED", reviewer, now,
+                                {"error": str(exc), "patient_id": patient_id})
+                    raise
+
+            sync_id = next_id(db, "SYNC")
+            db.execute(
+                "INSERT OR REPLACE INTO central_sync_log(sync_id, document_id, patient_id, ack_id, target, status, payload_json, ack_signature, synced_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sync_id, document_id, patient_id, ack_data["ack_id"], target_name, "ACKNOWLEDGED_SIMULATED",
+                 _dumps(sync_payload), ack_signature, _iso(now)),
+            )
             self._set_status(db, document_id, "SYNCED", now, actor=reviewer)
             self._event(db, document_id, "DOCUMENT_SYNCED", reviewer, now,
-                        {"patient_id": patient_id, "visits_count": len(visits)})
-        return {"document_id": document_id, "status": "SYNCED", "synced": True, "replayed": False}
+                        {"patient_id": patient_id, "visits_count": len(visits), "ack_id": ack_data["ack_id"], "target": target_name})
+        return {
+            "document_id": document_id, "status": "SYNCED", "synced": True, "replayed": False,
+            "target": target_name, "ack": ack_data,
+        }
 
     def conversational_prompt(self, document_id: str) -> dict:
         """Returns structured prompt, question text in French, and available actions for a conversational midwife client."""
@@ -1406,8 +1449,9 @@ class DayOneService:
             return {
                 "step": "WAITING_AI",
                 "question": "Votre photo est en cours d'analyse par l'IA. Merci de patienter quelques instants.",
-                "actions": [],
+                "actions": ["MANUAL_ENTRY"],
                 "document_id": document_id,
+                "expected_revision": d["revision"],
             }
         if step == "WAITING_RETAKE":
             return {
@@ -1427,23 +1471,54 @@ class DayOneService:
         if step == "DONE":
             return {
                 "step": "DONE",
-                "question": f"Le dossier est {'synchronisé' if status == 'SYNCED' else 'enregistré'} avec succès.",
+                "question": f"Le dossier est {'synchronisé avec le registre central (simulé)' if status == 'SYNCED' else 'enregistré avec succès'}.",
                 "actions": ["SYNC"] if status == "REGISTERED" else [],
                 "document_id": document_id,
             }
         if step == "FIELD":
             first = blocking[0]
+            if first.get("scope") == "page":
+                p_idx = first.get("page_index", 0) + 1
+                reason = first.get("reason", "PHOTO_UNUSABLE")
+                reason_desc = {
+                    "UNKNOWN_LAYOUT": "Mise en page non reconnue",
+                    "SECTION_UNCERTAIN": "Section reconnue avec un doute",
+                    "GRID_NOT_FOUND": "Tableau des visites introuvable",
+                    "GRID_COLUMN_UNREAD": "Colonne écrite non lue",
+                    "PHOTO_UNUSABLE": "Photo inutilisable",
+                    "OCR_TIMEOUT": "Lecture trop longue",
+                    "OCR_FAILED": "Lecture impossible",
+                }.get(reason, reason)
+                q = f"La page {p_idx} nécessite une vérification ({reason_desc}). Souhaitez-vous demander une reprise de photo, confirmer sa section, ou saisir à la main ?"
+                return {
+                    "step": "FIELD",
+                    "field": first,
+                    "question": q,
+                    "actions": ["RETAKE", "SECTION", "MANUAL_ENTRY"],
+                    "document_id": document_id,
+                    "expected_revision": d["revision"],
+                }
+
             field_name = first.get("field")
             spec = schema.FIELDS.get(field_name) or extended.FIELDS.get(field_name)
             label = spec.label if spec else field_name
             val = first.get("value")
-            val_str = f"« {val} »" if val is not None else "illisible ou absent"
-            q = f"Question de vérification : pour le champ {label}, la valeur lue est {val_str}. Souhaitez-vous confirmer cette valeur, la corriger, ou la marquer illisible ?"
+            reason = first.get("reason")
+            if reason == "REQUIRED_MISSING":
+                q = f"Pour le champ obligatoire {label}, aucune valeur n'a été lue. Merci de renseigner la valeur ou de demander une reprise de photo."
+                actions = ["CORRECT", "RETAKE"]
+            elif reason == "DUPLICATE_ENCOUNTER_DATE":
+                q = f"Deux visites ont la même date ({val}). Merci de corriger la date d'une des visites."
+                actions = ["CORRECT"]
+            else:
+                val_str = f"« {val} »" if val is not None else "illisible ou absent"
+                q = f"Question de vérification : pour le champ {label}, la valeur lue est {val_str}. Souhaitez-vous confirmer cette valeur, la corriger, ou la marquer illisible ?"
+                actions = ["CONFIRM", "CORRECT", "ILLEGIBLE", "NOT_PROVIDED"]
             return {
                 "step": "FIELD",
                 "field": first,
                 "question": q,
-                "actions": ["CONFIRM", "CORRECT", "ILLEGIBLE", "NOT_PROVIDED"],
+                "actions": actions,
                 "document_id": document_id,
                 "expected_revision": d["revision"],
             }
@@ -1490,28 +1565,44 @@ class DayOneService:
         if step == "FIELD":
             field_info = prompt["field"]
             act = action.upper()
-            if act == "CONFIRM":
-                self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
-                                  field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
-                                  section=field_info.get("section"), item_index=field_info.get("item_index"),
-                                  action="CONFIRM", expected_revision=rev)
-            elif act == "CORRECT":
-                val = kwargs.get("value")
-                self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
-                                  field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
-                                  section=field_info.get("section"), item_index=field_info.get("item_index"),
-                                  action="CORRECT", value=val, expected_revision=rev)
-            elif act in ("ILLEGIBLE", "NOT_PROVIDED"):
-                self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
-                                  field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
-                                  section=field_info.get("section"), item_index=field_info.get("item_index"),
-                                  action="SET_STATUS", field_status=act, expected_revision=rev)
-            elif act == "RETAKE":
+            if field_info.get("scope") == "page":
+                p_idx = field_info.get("page_index", 0)
                 pages = self.get_document(document_id)["pages"]
-                if pages:
-                    self.request_retake(pages[0]["page_id"], reviewer=reviewer)
+                page_id = pages[p_idx]["page_id"] if p_idx < len(pages) else None
+                if act == "RETAKE":
+                    if page_id:
+                        self.request_retake(page_id, reviewer=reviewer)
+                elif act == "SECTION":
+                    sec = kwargs.get("section")
+                    if page_id:
+                        self.set_page_section(page_id, reviewer=reviewer, section=sec, expected_revision=rev)
+                elif act == "MANUAL_ENTRY":
+                    self.start_manual_entry(document_id, reviewer=reviewer, expected_revision=rev)
+                else:
+                    raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape PAGE.")
             else:
-                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape FIELD.")
+                if act == "CONFIRM":
+                    self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
+                                      field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
+                                      section=field_info.get("section"), item_index=field_info.get("item_index"),
+                                      action="CONFIRM", expected_revision=rev)
+                elif act == "CORRECT":
+                    val = kwargs.get("value")
+                    self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
+                                      field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
+                                      section=field_info.get("section"), item_index=field_info.get("item_index"),
+                                      action="CORRECT", value=val, expected_revision=rev)
+                elif act in ("ILLEGIBLE", "NOT_PROVIDED"):
+                    self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
+                                      field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
+                                      section=field_info.get("section"), item_index=field_info.get("item_index"),
+                                      action="SET_STATUS", field_status=act, expected_revision=rev)
+                elif act == "RETAKE":
+                    pages = self.get_document(document_id)["pages"]
+                    if pages:
+                        self.request_retake(pages[0]["page_id"], reviewer=reviewer)
+                else:
+                    raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape FIELD.")
 
         elif step == "PATIENT":
             act = action.upper()
@@ -1538,7 +1629,7 @@ class DayOneService:
             else:
                 raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape CONFIRM.")
 
-        elif step == "FAILED":
+        elif step in ("FAILED", "WAITING_AI"):
             if action.upper() == "MANUAL_ENTRY":
                 self.start_manual_entry(document_id, reviewer=reviewer, expected_revision=rev)
             elif action.upper() == "RETAKE":
@@ -1546,7 +1637,7 @@ class DayOneService:
                 if pages:
                     self.request_retake(pages[0]["page_id"], reviewer=reviewer)
             else:
-                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape FAILED.")
+                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape {step}.")
 
         elif step == "DONE" and action.upper() == "SYNC":
             self.sync_document(document_id, reviewer=reviewer)
@@ -1559,7 +1650,7 @@ class DayOneService:
             patient = db.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,)).fetchone()
             if patient is None:
                 raise NotFound("PATIENT_NOT_FOUND", "Patiente introuvable.")
-            visit_rows = db.execute("SELECT * FROM visits WHERE patient_id = ? ORDER BY visit_date", (patient_id,)).fetchall()
+            visit_rows = db.execute("SELECT * FROM visits WHERE patient_id = ? ORDER BY visit_date ASC, visit_id ASC", (patient_id,)).fetchall()
             visits = [
                 {
                     "visit_id": row["visit_id"], "visit_date": row["visit_date"], "slot": row["slot"],
@@ -1571,8 +1662,10 @@ class DayOneService:
             source_doc_ids = set()
             for v in visits:
                 source_doc_ids.update(v.get("sources", []))
+            # Deterministic selection: sorted by document_id DESC
+            sorted_source_ids = sorted(source_doc_ids, reverse=True)
             extended_draft = None
-            for s_id in source_doc_ids:
+            for s_id in sorted_source_ids:
                 s_doc = db.execute("SELECT draft_json FROM documents WHERE document_id = ?", (s_id,)).fetchone()
                 if s_doc and s_doc["draft_json"]:
                     d_json = json.loads(s_doc["draft_json"])

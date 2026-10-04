@@ -6,6 +6,7 @@ const DOC_STATUS = {
   CAPTURED: "Réception des pages", PENDING_AI: "En file de lecture", AI_PROCESSED: "Lu automatiquement",
   NEEDS_REVIEW: "À vérifier", VALIDATED: "Champs vérifiés", PATIENT_MATCHED: "Patiente choisie",
   REGISTERED: "Enregistré", PROCESSING_FAILED: "Échec de lecture", DUPLICATE_SUSPECTED: "Doublon suspecté",
+  SYNCED: "Synchronisé (registre central simulé)",
 };
 const FIELD_STATUS = {
   KNOWN: "lu", NEEDS_REVIEW: "à vérifier", ILLEGIBLE: "illisible", NOT_PROVIDED: "non renseigné",
@@ -108,7 +109,7 @@ const PAGE_GROUP = { cover: "identity", identification: "history", delivery: "de
 const STEPS = [["read", "Lecture des pages"], ["fields", "Vérification"], ["patient", "Patiente"],
   ["confirm", "Résumé"], ["done", "Enregistré"]];
 const STEP_OF = { COLLECTING: "read", WAITING_AI: "read", WAITING_RETAKE: "read", FAILED: "read", FIELD: "fields",
-  PATIENT: "patient", EXISTING_VISITS: "confirm", CONFIRM: "confirm", DONE: "done" };
+  PATIENT: "patient", EXISTING_VISITS: "confirm", CONFIRM: "confirm", DONE: "done", SYNCED: "done" };
 const STALE_MESSAGE = "Le dossier a changé pendant votre action (nouvelle lecture, reprise de photo ou autre agent). "
   + "La dernière version est affichée : vérifiez-la, puis recommencez.";
 
@@ -137,6 +138,11 @@ const state = {
   busy: false,
   connectionLost: false,
   signatures: {},
+  networkOffline: false,
+  offlineItems: [],
+  conversational: null,
+  conversationalInput: "",
+  conversationalInputOpen: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -567,11 +573,84 @@ function newMessageId() {
   return `wamid.sim-${random}`;
 }
 
+function updateOfflineUI() {
+  const badge = $("#network-status-badge");
+  const bar = $("#offline-bar");
+  const countSpan = $("#offline-buffered-count");
+  const reconnectBtn = $("#offline-reconnect-btn");
+  if (state.networkOffline) {
+    if (badge) {
+      badge.textContent = "○ Hors-ligne";
+      badge.className = "badge-offline";
+    }
+    if (bar) bar.hidden = false;
+  } else {
+    if (badge) {
+      badge.textContent = "● En ligne";
+      badge.className = "badge-online";
+    }
+    if (bar) bar.hidden = true;
+  }
+  if (countSpan) countSpan.textContent = state.offlineItems.length;
+  if (reconnectBtn) reconnectBtn.disabled = state.offlineItems.length === 0;
+}
+
+async function reconnectAndFlush() {
+  try {
+    notify("Rétablissement de la connexion réseau...", "info");
+    const result = await api("POST", "/api/simulator/offline/flush");
+    notify(`Connexion rétablie ! ${plural(result.delivered, "photo")} téléversée${result.delivered > 1 ? "s" : ""} exactement une fois. Lecture en cours.`, "success");
+    state.networkOffline = false;
+    const toggle = $("#network-offline-toggle");
+    if (toggle) toggle.checked = false;
+    state.offlineItems = [];
+    updateOfflineUI();
+    await refreshAll(true);
+  } catch (error) {
+    notify(`Erreur lors de l'envoi différé : ${error.message}`, "error");
+  }
+}
+
 async function sendPhotos() {
   const refs = [...state.selectedMedia];
   const reply = state.reply;
   state.selectedMedia = [];
   renderComposer();
+
+  if (state.networkOffline) {
+    const groupId = refs.length > 1 ? `grp-${Date.now()}` : null;
+    let buffered = 0;
+    for (const ref of refs) {
+      try {
+        const resp = await fetch(mediaUrl(ref));
+        const blob = await resp.blob();
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        const msgId = newMessageId();
+        await api("POST", "/api/simulator/offline/capture", {
+          sender_id: state.senderId,
+          message_id: msgId,
+          image_base64: base64Data,
+          group_id: groupId,
+          suffix: ref.endsWith(".png") ? ".png" : ".jpg",
+        });
+        buffered++;
+        state.offlineItems.push({ ref, messageId: msgId, time: new Date().toISOString() });
+      } catch (err) {
+        notify(`Erreur lors de la capture hors-ligne : ${err.message}`, "error");
+        break;
+      }
+    }
+    updateOfflineUI();
+    notify(`Mode hors-ligne : ${plural(buffered, "photo chiffrée")} et stockée${buffered > 1 ? "s" : ""} dans l'outbox locale.`, "info");
+    renderThread(state.thread);
+    return;
+  }
+
   for (const ref of refs) {
     const body = { sender_id: state.senderId, message_id: newMessageId(), media_ref: ref };
     if (reply) body.retake_request_id = reply.requestId;
@@ -675,7 +754,9 @@ async function refreshQueue(force) {
 async function refreshDetail(force) {
   if (!state.documentId) {
     state.detail = null;
+    state.conversational = null;
     renderReview();
+    renderThread(state.thread);
     return;
   }
   if (state.edit && !force) return;
@@ -684,19 +765,26 @@ async function refreshDetail(force) {
     detail = await api("GET", `/api/documents/${state.documentId}`);
   } catch (error) {
     if (error.status === 404) {
-      Object.assign(state, { documentId: null, detail: null });
+      Object.assign(state, { documentId: null, detail: null, conversational: null });
       renderReview();
+      renderThread(state.thread);
       return;
     }
     throw error;
   }
+  try {
+    state.conversational = await api("GET", `/api/documents/${state.documentId}/conversational`);
+  } catch (err) {
+    state.conversational = null;
+  }
   const signature = [detail.document.status, detail.document.revision, detail.events.length,
     JSON.stringify(detail.document.extraction_progress), JSON.stringify(detail.document.extraction_retry),
-    state.system.ai_available, state.busy].join("|");
+    JSON.stringify(state.conversational), state.system.ai_available, state.busy].join("|");
   if (!force && signature === state.signatures.detail) return;
   state.signatures.detail = signature;
   state.detail = detail;
   renderReview();
+  renderThread(state.thread);
 }
 
 async function refreshTimeline(force) {
@@ -723,8 +811,131 @@ function renderThread(messages) {
     retakeBubbleAction(m),
     el("time", { datetime: m.created_at }, fmtTime(m.created_at)),
   )) : [el("p", { class: "thread-empty" }, "Aucun message. Choisissez des photos ci-dessous puis « Envoyer ».")];
+
+  if (state.offlineItems && state.offlineItems.length) {
+    for (const item of state.offlineItems) {
+      nodes.push(el("div", { class: "bubble mine offline-pending" },
+        el("span", { class: "sr-only" }, "Sage-femme (hors-ligne) : "),
+        el("img", { src: mediaUrl(item.ref), alt: `Photo hors-ligne : ${basename(item.ref)}` }),
+        el("small", {}, `${basename(item.ref)} · Chiffré dans l'outbox locale`),
+        el("span", { class: "offline-hint" }, "🔒 En attente de connexion réseau pour envoi"),
+        el("time", { datetime: item.time }, fmtTime(item.time))));
+    }
+  }
+
+  if (state.conversational && state.conversational.question && state.documentId) {
+    nodes.push(renderConversationalCard(state.conversational));
+  }
+
   replaceKeepingFocus(box, nodes);
   if (atBottom || messages.length < 4) box.scrollTop = box.scrollHeight;
+}
+
+function renderConversationalCard(p) {
+  const actions = p.actions || [];
+  const rev = p.expected_revision;
+  const cardChildren = [
+    el("div", { class: "card-badge" }, "Dialogue Sage-Femme (Simulé)"),
+    el("div", { class: "card-question" }, p.question),
+  ];
+
+  const actionButtons = [];
+
+  if (p.step === "FIELD") {
+    const isPage = p.field?.scope === "page";
+    if (isPage) {
+      if (actions.includes("RETAKE")) {
+        actionButtons.push(button("Demander une reprise", () => replyConversational({ action: "RETAKE", expected_revision: rev }), "card-btn primary"));
+      }
+      if (actions.includes("MANUAL_ENTRY")) {
+        actionButtons.push(button("Saisie manuelle", () => replyConversational({ action: "MANUAL_ENTRY", expected_revision: rev }), "card-btn"));
+      }
+    } else {
+      if (actions.includes("CONFIRM")) {
+        actionButtons.push(button("Confirmer la valeur", () => replyConversational({ action: "CONFIRM", expected_revision: rev }), "card-btn primary"));
+      }
+      if (actions.includes("CORRECT")) {
+        actionButtons.push(button("Corriger...", () => {
+          state.conversationalInputOpen = true;
+          renderThread(state.thread);
+        }, "card-btn"));
+      }
+      if (actions.includes("ILLEGIBLE")) {
+        actionButtons.push(button("Marquer illisible", () => replyConversational({ action: "ILLEGIBLE", expected_revision: rev }), "card-btn"));
+      }
+      if (actions.includes("NOT_PROVIDED")) {
+        actionButtons.push(button("Non renseigné", () => replyConversational({ action: "NOT_PROVIDED", expected_revision: rev }), "card-btn"));
+      }
+      if (actions.includes("RETAKE")) {
+        actionButtons.push(button("Demander une reprise", () => replyConversational({ action: "RETAKE", expected_revision: rev }), "card-btn"));
+      }
+    }
+  } else if (p.step === "PATIENT") {
+    if (p.candidates && p.candidates.length) {
+      for (const cand of p.candidates) {
+        actionButtons.push(button(`Sélectionner ${cand.patient_id}`, () => replyConversational({ action: "CHOOSE", patient_id: cand.patient_id, expected_revision: rev }), "card-btn primary"));
+      }
+    }
+    actionButtons.push(button("Nouvelle patiente", () => replyConversational({ action: "NEW", expected_revision: rev }), "card-btn"));
+  } else if (p.step === "CONFIRM") {
+    actionButtons.push(button("Confirmer l'enregistrement", () => replyConversational({ action: "CONFIRM", expected_revision: rev }), "card-btn primary"));
+  } else if (p.step === "DONE") {
+    if (actions.includes("SYNC")) {
+      actionButtons.push(button("Synchroniser avec le registre central (simulé)", () => replyConversational({ action: "SYNC" }), "card-btn primary"));
+    }
+  } else if (p.step === "WAITING_AI" || p.step === "FAILED") {
+    if (actions.includes("MANUAL_ENTRY")) {
+      actionButtons.push(button("Saisie manuelle (IA indisponible)", () => replyConversational({ action: "MANUAL_ENTRY", expected_revision: rev }), "card-btn primary"));
+    }
+    if (actions.includes("RETAKE")) {
+      actionButtons.push(button("Demander une reprise", () => replyConversational({ action: "RETAKE", expected_revision: rev }), "card-btn"));
+    }
+  }
+
+  cardChildren.push(el("div", { class: "card-actions" }, ...actionButtons));
+
+  if (state.conversationalInputOpen) {
+    const inputField = el("input", {
+      type: "text", class: "card-input", placeholder: "Entrez la correction...",
+      value: state.conversationalInput || "",
+      oninput: (e) => { state.conversationalInput = e.target.value; },
+      onkeydown: (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const val = state.conversationalInput;
+          state.conversationalInputOpen = false;
+          state.conversationalInput = "";
+          replyConversational({ action: "CORRECT", value: val, expected_revision: rev });
+        }
+      }
+    });
+    const submitBtn = button("Valider", () => {
+      const val = state.conversationalInput;
+      state.conversationalInputOpen = false;
+      state.conversationalInput = "";
+      replyConversational({ action: "CORRECT", value: val, expected_revision: rev });
+    }, "card-btn primary");
+    const cancelBtn = button("Annuler", () => {
+      state.conversationalInputOpen = false;
+      renderThread(state.thread);
+    }, "card-btn ghost");
+    cardChildren.push(el("div", { class: "card-input-row" }, inputField, submitBtn, cancelBtn));
+  }
+
+  return el("div", { class: "bubble theirs conversational-card" }, ...cardChildren);
+}
+
+async function replyConversational(payload) {
+  try {
+    const docId = state.documentId;
+    if (!docId) return;
+    const res = await api("POST", `/api/documents/${docId}/conversational`, payload);
+    state.conversational = res;
+    notify("Réponse enregistrée.", "success");
+    await refreshAll(true);
+  } catch (err) {
+    notify(`Erreur : ${err.message}`, "error");
+  }
 }
 
 function retakeBubbleAction(message) {
@@ -1345,24 +1556,41 @@ function summary(d) {
   return node;
 }
 
+async function syncDocument(documentId) {
+  try {
+    const res = await api("POST", `/api/documents/${documentId}/sync`);
+    notify(`Dossier synchronisé avec succès ! Accusé : ${res.ack.ack_id} (${res.target})`, "success");
+    await refreshAll(true);
+  } catch (err) {
+    notify(`Échec de la synchronisation : ${err.message}`, "error");
+  }
+}
+
 function registrationMessage(d) {
   const registration = d.registration;
+  const isSynced = d.document.status === "SYNCED";
   const extendedUnverified = d.draft
     ? extendedTargets(d.draft).filter(({ fv }) => fv.verification.state === "UNVERIFIED").length : 0;
-  return el("div", { class: "action-card done" },
-    el("p", {}, `Enregistré par ${registration.registered_by} à ${fmtTime(registration.registered_at)}, `
+  return el("div", { class: `action-card done ${isSynced ? "synced" : ""}` },
+    el("p", {}, isSynced
+      ? `✓ Dossier enregistré et synchronisé avec le Registre National Central (Simulé). Patiente ${registration.patient_id}.`
+      : `Enregistré par ${registration.registered_by} à ${fmtTime(registration.registered_at)}, `
       + `patiente ${registration.patient_id}${registration.patient_created ? " (créée)" : ""}.`),
     registration.visits.length ? el("ul", {}, registration.visits.map((visit) => el("li", {},
       `${visit.visit_id} — ${fmtDate(visit.visit_date)} (${slotLabel(visit.slot)}) : ${OUTCOME[visit.outcome]}`)))
       : el("p", { class: "muted" }, "Aucune visite enregistrée : ce dossier ne contenait pas de visite prénatale."),
     extendedUnverified ? el("p", { class: "muted" }, `${plural(extendedUnverified, "donnée complémentaire")} `
       + `${extendedUnverified > 1 ? "restent" : "reste"} non ${agree(extendedUnverified, "vérifiée")} dans le dossier.`) : null,
-    el("div", { class: "actions" }, button("Voir le suivi de la patiente", async () => {
-      state.patientId = registration.patient_id;
-      await refreshTimeline(true);
-      $(".timeline-panel").scrollIntoView({ block: "start" });
-      $("#patient-select").focus();
-    }, "primary")));
+    el("div", { class: "actions" },
+      button("Voir le suivi de la patiente", async () => {
+        state.patientId = registration.patient_id;
+        await refreshTimeline(true);
+        $(".timeline-panel").scrollIntoView({ block: "start" });
+        $("#patient-select").focus();
+      }, isSynced ? "ghost" : "primary"),
+      !isSynced
+        ? button("Synchroniser avec le registre central (simulé)", () => syncDocument(d.document.document_id), "primary")
+        : el("span", { class: "badge-synced" }, "✓ Synchronisé (simulé)")));
 }
 
 // ---------------------------------------------------------------- alerts and context
@@ -1879,13 +2107,45 @@ async function init() {
   $("#send-photos").addEventListener("click", sendPhotos);
   $("#replay-last").addEventListener("click", replayLastMessage);
   $("#patient-select").addEventListener("change", (event) => { state.patientId = event.target.value; refreshTimeline(true); });
+
+  const offlineToggle = $("#network-offline-toggle");
+  if (offlineToggle) {
+    offlineToggle.addEventListener("change", (e) => {
+      state.networkOffline = e.target.checked;
+      updateOfflineUI();
+      notify(state.networkOffline
+        ? "Mode hors-ligne activé : les photos capturées seront chiffrées dans l'outbox locale."
+        : "Mode en ligne rétabli.", "info");
+    });
+  }
+  const reconnectBtn = $("#offline-reconnect-btn");
+  if (reconnectBtn) {
+    reconnectBtn.addEventListener("click", reconnectAndFlush);
+  }
+
+  try {
+    const offlineStatus = await api("GET", "/api/simulator/offline/status");
+    if (offlineStatus.pending_count > 0) {
+      state.networkOffline = true;
+      if (offlineToggle) offlineToggle.checked = true;
+      state.offlineItems = offlineStatus.items
+        .filter((i) => i.state === "PENDING")
+        .map((i) => ({ ref: i.message_id, time: i.created_at }));
+      updateOfflineUI();
+    }
+  } catch (err) {
+    // Offline status check optional on startup
+  }
+
   $("#reset-demo").addEventListener("click", async () => {
     if (!window.confirm("Effacer toutes les données et recharger la visite antérieure de démonstration ?")) return;
     await api("POST", "/api/demo/reset", {});
     Object.assign(state, {
       documentId: null, detail: null, open: null, edit: null, visitIndex: null, decisions: {}, patientId: null,
-      lastMessage: null, error: null, reply: null,
+      lastMessage: null, error: null, reply: null, offlineItems: [], conversational: null, networkOffline: false,
     });
+    if (offlineToggle) offlineToggle.checked = false;
+    updateOfflineUI();
     $("#replay-last").disabled = true;
     renderComposer();
     notify("Démo réinitialisée : une patiente avec 3 visites antérieures.", "success");

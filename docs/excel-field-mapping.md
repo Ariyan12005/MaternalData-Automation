@@ -437,9 +437,41 @@ Storage and API changes were kept to what review and retention need. All are bac
 | Live drafts may not claim an extended field was verified | `dayone/extraction.py` (`check_live_draft`) | Same rule as v1.0 fields |
 | Re-extraction discards extended reviews and counts them | `dayone/service.py` | Same rule as v1.0 fields |
 | Parser version `grid-4` in `extractor_version` | `dayone/live_ocr.py` | Lab rows and extended reading |
-| Number parsing strips only a trailing unit (`3200 gr` was read as `3200 r`) | `dayone/schema.py` (`_number`) | Bug fix; applies to v1.0 fields too |
+## Demo Export Rules (Verified Implementation)
 
-Not done, for Ariyan: an export, pregnancy/delivery/newborn tables, any derived value.
+For the integration build and demonstration flow, the backend implements deterministic export rules (`dayone/export_columns.py` and `dayone/service.py`) producing RFC-4180 CSV matching the exact 31 headers (`GET /export/registry.csv` and `GET /api/export/csv`):
+
+1. **Row Scope:**
+   - Exactly one export row per registered patient (`EXP-{patient_id}`).
+   - Represents the verified maternal pregnancy profile.
+
+2. **Deterministic Source Document Selection:**
+   - When multiple source documents contribute visits or extended records for a patient, document IDs are sorted deterministically (`sorted(source_ids, reverse=True)`). The most recent primary document draft provides extended pregnancy and delivery context.
+
+3. **Visits Ordering:**
+   - Visits are sorted strictly chronologically by `visit_date ASC, visit_id ASC`.
+
+4. **Blood Pressure Aggregation:**
+   - Arithmetic mean calculated across all verified visit blood pressure readings:
+     `mean_sys = round(sum(sys_bps) / len(sys_bps), 1)`
+     `mean_dia = round(sum(dia_bps) / len(dia_bps), 1)`
+   - Only visits where BP is `KNOWN` and verification state is `CONFIRMED` or `CORRECTED` are included.
+
+5. **Lab Results Selection:**
+   - First chronologically verified visit lab measurement is taken (e.g., `hemoglobin_g_dl`, `hiv_test`, `syphilis_test`).
+   - Binary tests mapped: `POSITIVE` -> `1`, `NEGATIVE` -> `0`.
+
+6. **Delivery and Newborn Details:**
+   - Extracted from verified delivery and first newborn records (`newborns[0]`).
+   - Delivery mode: vaginal (`0`) vs cesarean (`1`).
+   - Newborn sex: female (`0`) vs male (`1`).
+
+7. **Strict Verification Guard (No Guesswork / No Imputation):**
+   - Any value without verified human confirmation (`field_status == "KNOWN"` and `verification.state in ("CONFIRMED", "CORRECTED")`) is excluded (`None`).
+   - Raw or unverified OCR suggestions are NEVER exported as registry records.
+
+8. **Undefined Fields:**
+   - Undefined or unmeasured fields (such as `education level`, `hypertension history`, `diabetes mellitus`, `first fasting glucose`, `proteinuria`, `preterm birth`, `referral to higher care`) remain empty (`""`). No data is fabricated or imputed.
 
 ## Unresolved decisions
 

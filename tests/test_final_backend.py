@@ -8,7 +8,7 @@ from dayone import export_columns
 from dayone.offline import OfflineQueue
 from dayone.security import Cipher
 from dayone.service import Conflict, Invalid
-from tests.test_flow import FlowTestCase, COVER, T1_GRID, REVIEWER
+from tests.test_flow import FlowTestCase, COVER, T1_GRID, REVIEWER, REPO_ROOT, SENDER
 
 
 class FinalBackendTest(FlowTestCase):
@@ -217,6 +217,46 @@ class FinalBackendTest(FlowTestCase):
         self.assertEqual(status, 200)
         self.assertIn("csv", body)
         self.assertIn("age (years)", body["csv"])
+        api.close()
+
+    def test_api_simulator_offline_flow(self):
+        import base64
+        from dayone.media import MediaStore
+        from dayone.server import Api
+        self.service.media_store = MediaStore(Path(self.tmp.name) / "images", Cipher(Fernet.generate_key()))
+        api = Api(self.service)
+        api.offline_queue.reset()
+
+        img_bytes = (REPO_ROOT / COVER).read_bytes()
+        img_b64 = base64.b64encode(img_bytes).decode("ascii")
+        status, body = api.dispatch("POST", "/api/simulator/offline/capture", {}, {
+            "sender_id": SENDER,
+            "message_id": "msg-offline-1",
+            "image_base64": img_b64,
+            "group_id": "grp-offline-1",
+        }, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["state"], "PENDING")
+        self.assertEqual(body["buffered_count"], 1)
+
+        status, body = api.dispatch("GET", "/api/simulator/offline/status", {}, {}, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["pending_count"], 1)
+        self.assertEqual(body["synced_count"], 0)
+
+        status, body = api.dispatch("POST", "/api/simulator/offline/flush", {}, {}, REVIEWER)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["delivered"], 1)
+        self.assertEqual(body["items"][0]["state"], "SYNCED")
+        doc_id = body["items"][0]["document_id"]
+        self.assertIsNotNone(doc_id)
+
+        self.service.tick()
+        doc = self.service.get_document(doc_id)
+        self.assertIsNotNone(doc)
+        api.close()
 
 
 if __name__ == "__main__":

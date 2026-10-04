@@ -12,6 +12,7 @@ import logging
 import mimetypes
 import re
 import threading
+import uuid
 from datetime import timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import extraction_http, live_ocr_adapter, ocr_engines, ocr_process, whatsapp
 from .extraction import FixtureExtractor
 from .extraction_pool import ExtractionPool
+from .offline import OfflineQueue
+from .security import Cipher
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
 
@@ -46,6 +49,17 @@ def _authorized(supplied: str, token: str) -> bool:
     except (ValueError, UnicodeDecodeError):
         return False
     return hmac.compare_digest(digest(credentials), digest("dayone:" + token))
+
+
+def _demo_cipher() -> Cipher:
+    key = os.environ.get("DAYONE_ENCRYPTION_KEY")
+    if key:
+        try:
+            return Cipher(key)
+        except Exception:
+            pass
+    fixed_32 = b"dayone-demo-fernet-key-32-bytes!"
+    return Cipher(base64.urlsafe_b64encode(fixed_32).decode("ascii"))
 
 
 def extractor_mode_from(value: str | None) -> str:
@@ -87,9 +101,9 @@ def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, inbo
     if secure:
         from .media import MongoMediaStore
         media_store = MongoMediaStore(store.db, store.cipher)
-    elif key:
+    else:
         from .media import MediaStore
-        media_store = MediaStore(REPO_ROOT / "var" / "media")
+        media_store = MediaStore(REPO_ROOT / "var" / "media", cipher=_demo_cipher())
     service = DayOneService(store, None if extractor_mode == "external" else FixtureExtractor(REPO_ROOT / "fixtures"), REPO_ROOT,
                             grouping_window_seconds=grouping_window_seconds, media_store=media_store,
                             inbound_media_dir=inbound_media_dir or whatsapp.media_dir_from_env(os.environ, REPO_ROOT))
@@ -116,10 +130,19 @@ def ocr_reader_for(choice: str, settings: dict) -> ocr_process.OcrProcessPool:
 
 
 class Api:
-    def __init__(self, service: DayOneService):
+    def __init__(self, service: DayOneService, offline_queue: OfflineQueue | None = None):
         self.service = service
+        if offline_queue is not None:
+            self.offline_queue = offline_queue
+        else:
+            queue_path = REPO_ROOT / "var" / "offline-demo.sqlite3"
+            queue_path.parent.mkdir(parents=True, exist_ok=True)
+            self.offline_queue = OfflineQueue(queue_path, cipher=_demo_cipher())
         s = service
         self.routes = [
+            ("POST", r"/api/simulator/offline/capture", lambda m, q, b, r: self._offline_capture(b)),
+            ("GET", r"/api/simulator/offline/status", lambda m, q, b, r: self._offline_status()),
+            ("POST", r"/api/simulator/offline/flush", lambda m, q, b, r: self._offline_flush()),
             ("POST", r"/api/admin/senders", lambda m, q, b, r: s.enroll_sender(
                 facility_id=b.get("facility_id"), facility_name=b.get("facility_name"),
                 sender_id=b.get("sender_id"), label=b.get("label"), channel=b.get("channel"))),
@@ -178,11 +201,57 @@ class Api:
             ("GET", r"/api/export/csv", lambda m, q, b, r: {"csv": s.export_csv()}),
         ]
 
+    def _offline_capture(self, body: dict) -> dict:
+        sender_id = body.get("sender_id") or "whatsapp:+212600000001"
+        message_id = body.get("message_id") or f"OFFLINE-{uuid.uuid4().hex[:8]}"
+        img_b64 = body.get("image_base64")
+        if not img_b64:
+            raise Invalid("IMAGE_REQUIRED", "image_base64 manquant pour la capture hors-ligne.")
+        try:
+            raw_bytes = base64.b64decode(img_b64)
+        except Exception:
+            raise Invalid("INVALID_IMAGE_BASE64", "Décodage base64 échoué.")
+        group_id = body.get("group_id")
+        suffix = body.get("suffix", ".jpg")
+        key = self.offline_queue.capture(sender_id, message_id, raw_bytes, group_id=group_id, suffix=suffix)
+        return {
+            "ok": True,
+            "key": key,
+            "message_id": message_id,
+            "state": "PENDING",
+            "buffered_count": len(self.offline_queue.list_items("PENDING")),
+        }
+
+    def _offline_status(self) -> dict:
+        return {
+            "items": self.offline_queue.list_items(),
+            "pending_count": len(self.offline_queue.list_items("PENDING")),
+            "synced_count": len(self.offline_queue.list_items("SYNCED")),
+        }
+
+    def _offline_flush(self) -> dict:
+        def _send(body):
+            return self.service.ingest_upload(**body)
+        def _close(doc_id):
+            return self.service.close_capture(doc_id) or {"ok": True}
+        delivered = self.offline_queue.flush(_send, close_group=_close)
+        return {
+            "ok": True,
+            "delivered": delivered,
+            "items": self.offline_queue.list_items(),
+        }
+
     def _reset(self, match, query, body, reviewer):
         if os.environ.get("DAYONE_STORAGE", "sqlite") == "mongodb" or whatsapp.outbound_hold_active(self.service.store):
             raise Invalid("RESET_DISABLED", "Reset disabled for secure storage or held outbound messages")
         self.service.reset_demo(with_history=body.get("with_history", True))
+        if self.offline_queue:
+            self.offline_queue.reset()
         return {"ok": True}
+
+    def close(self):
+        if self.offline_queue:
+            self.offline_queue.close()
 
     def dispatch(self, method: str, path: str, query: dict, body: dict, reviewer: str | None):
         for route_method, pattern, handler in self.routes:
@@ -246,6 +315,15 @@ def make_handler(api: Api):
                 self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json")
             elif method == "GET" and url.path.startswith("/media/"):
                 self._send_media(unquote(url.path[len("/media/"):]))
+            elif method == "GET" and url.path in ("/export/registry.csv", "/export/maternal_registry.csv", "/api/export/registry.csv"):
+                csv_data = api.service.export_csv().encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="maternal_registry_export.csv"')
+                self.send_header("Content-Length", str(len(csv_data)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(csv_data)
             elif method == "GET":
                 self._send_static(url.path)
             else:

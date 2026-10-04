@@ -140,6 +140,12 @@ class OfflineQueue:
                 self.db.commit()
         return delivered
 
+    def reset(self):
+        self.db.execute("DELETE FROM outbox")
+        self.db.execute("DELETE FROM closures")
+        self.db.execute("DELETE FROM item_status")
+        self.db.commit()
+
     def close(self):
         self.db.close()
 
