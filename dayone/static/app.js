@@ -1,6 +1,7 @@
 "use strict";
 
 const REVIEWABLE = new Set(["AI_PROCESSED", "NEEDS_REVIEW", "VALIDATED", "PATIENT_MATCHED", "DUPLICATE_SUSPECTED"]);
+const SPECIMEN_PATIENT_ONE = /\/dossiers_specimen_10_patientes-(?:01|02|03|04|05|06)\.png$/;
 
 const DOC_STATUS = {
   CAPTURED: "Réception des pages", PENDING_AI: "En attente IA", AI_PROCESSED: "Traité par l'IA",
@@ -334,7 +335,7 @@ function renderThread(messages) {
 }
 
 function renderMedia() {
-  const list = state.showAllMedia ? state.media : state.media.filter((ref) => /\/1-\d+\.jpg$/.test(ref));
+  const list = state.showAllMedia ? state.media : state.media.filter((ref) => SPECIMEN_PATIENT_ONE.test(ref));
   $("#media-grid").replaceChildren(...list.map((ref) => {
     const order = state.selectedMedia.indexOf(ref);
     return el("button", {
@@ -384,7 +385,7 @@ function renderReview() {
   const d = state.detail;
   if (!d) {
     root.replaceChildren(el("p", { class: "empty" },
-      "Sélectionnez un dossier, ou envoyez des photos depuis le téléphone (démo : 1-1.jpg puis 1-5.jpg)."));
+      "Sélectionnez un dossier, ou envoyez les pages spécimen 01, 02 et 03 depuis le téléphone."));
     return;
   }
   root.replaceChildren(...[

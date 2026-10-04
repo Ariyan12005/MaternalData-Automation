@@ -142,7 +142,12 @@ class DayOneService:
 
     def list_media(self) -> list[str]:
         def sort_key(path: Path):
-            return (0 if re.fullmatch(r"1-\d+\.jpg", path.name) else 1, path.name)
+            specimen = re.fullmatch(r"dossiers_specimen_10_patientes-(0[1-6])\.png", path.name)
+            if specimen:
+                return (0, int(specimen.group(1)))
+            if re.fullmatch(r"1-\d+\.jpg", path.name):
+                return (1, path.name)
+            return (2, path.name)
 
         files = [p for p in self.media_dir.iterdir() if p.is_file() and p.suffix.lower() in MEDIA_SUFFIXES]
         return [p.relative_to(self.repo_root).as_posix() for p in sorted(files, key=sort_key)]
