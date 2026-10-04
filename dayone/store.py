@@ -98,7 +98,11 @@ CREATE TABLE IF NOT EXISTS messages (
     direction TEXT NOT NULL CHECK (direction IN ('IN', 'OUT')),
     body TEXT,
     media_ref TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    delivery_status TEXT,
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    provider_message_id TEXT,
+    delivery_error TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,6 +124,10 @@ MIGRATIONS = (
     ("documents", "sync_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ("documents", "sync_next_attempt_at", "TEXT"),
     ("documents", "sync_receipt_json", "TEXT"),
+    ("messages", "delivery_status", "TEXT"),
+    ("messages", "delivery_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("messages", "provider_message_id", "TEXT"),
+    ("messages", "delivery_error", "TEXT"),
 )
 
 

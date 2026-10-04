@@ -24,6 +24,7 @@ from .media import MAX_PHOTO_BYTES, MediaStore
 from .service import DayOneService, Invalid, ServiceError
 from .store import Store
 from .sync import HttpCentralRegistry, LocalCentralRegistry
+from .whatsapp import WhatsAppChannel, WhatsAppConfig
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -60,6 +61,9 @@ def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extr
     service.extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
                          else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode](), media=service.read_media))
     service.auth = Auth(service.store)
+    config = WhatsAppConfig.from_env()
+    service.whatsapp = WhatsAppChannel(config, service) if config else None
+    service.outbound_enabled = config is not None
     if os.environ.get("DAYONE_CENTRAL_URL"):
         service.central = HttpCentralRegistry(os.environ["DAYONE_CENTRAL_URL"], os.environ.get("DAYONE_CENTRAL_SECRET", ""))
     else:
@@ -171,6 +175,9 @@ def make_handler(api: Api, *, secure_cookies: bool = False):
 
         def _handle(self, method: str) -> None:
             url = urlparse(self.path)
+            if url.path == "/webhook/whatsapp":
+                self._whatsapp(method, url)
+                return
             if url.path.startswith("/api/"):
                 # Cross-site requests cannot set a custom header without a CORS preflight, which is never granted.
                 if method == "POST" and self.headers.get(CSRF_HEADER) != "dayone":
@@ -202,6 +209,36 @@ def make_handler(api: Api, *, secure_cookies: bool = False):
                 self._send_static(url.path)
             else:
                 self._send(HTTPStatus.METHOD_NOT_ALLOWED, b"", "text/plain")
+
+        def _whatsapp(self, method: str, url) -> None:
+            """Meta Cloud API webhook: authenticated by the verify token (GET) or the app-secret signature (POST)."""
+            channel = getattr(api.service, "whatsapp", None)
+            if channel is None:
+                self._send(HTTPStatus.NOT_FOUND, b"", "text/plain")
+                return
+            if method == "GET":
+                query = parse_qs(url.query)
+                challenge = channel.verify_subscription(*(query.get(k, [None])[0] for k in
+                                                          ("hub.mode", "hub.verify_token", "hub.challenge")))
+                if challenge is None:
+                    self._send(HTTPStatus.FORBIDDEN, b"", "text/plain")
+                else:
+                    self._send(HTTPStatus.OK, challenge.encode(), "text/plain")
+                return
+            body = self._read_bytes(MAX_BODY_BYTES)
+            if body is None:
+                return
+            if not channel.signature_valid(body, self.headers.get("X-Hub-Signature-256")):
+                self._send(HTTPStatus.UNAUTHORIZED, b"", "text/plain")
+                return
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                self._send(HTTPStatus.BAD_REQUEST, b"", "text/plain")
+                return
+            results = channel.handle_webhook(payload)
+            log.info("whatsapp webhook: %s", [r["outcome"] for r in results])
+            self._send_json(HTTPStatus.OK, {"ok": True})
 
         def _login(self) -> None:
             body = self._read_json()
@@ -293,6 +330,8 @@ def _run_worker(service: DayOneService, stop: threading.Event, interval: float =
     while not stop.wait(interval):
         try:
             service.tick()
+            if getattr(service, "whatsapp", None) is not None:
+                service.whatsapp.deliver_pending()
         except Exception:
             log.exception("queue tick failed")
 

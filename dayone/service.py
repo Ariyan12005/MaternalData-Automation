@@ -79,6 +79,8 @@ class DayOneService:
         self.media_dir = (self.repo_root / "data" / "Paper Registry").resolve()
         self.media = media
         self.central = None  # sync.LocalCentralRegistry or sync.HttpCentralRegistry
+        self.outbound_enabled = False  # True when the WhatsApp Cloud API sends the messages
+        self.whatsapp = None  # whatsapp.WhatsAppChannel when configured
         self.window = timedelta(seconds=grouping_window_seconds)
         self.clock = clock
 
@@ -103,10 +105,14 @@ class DayOneService:
     def _seed_prior_registration(self) -> None:
         """An earlier digitization of the same booklet, already reviewed, so the demo has a patient to link to."""
         document_id = None
-        for number, ref in enumerate(DEMO_HISTORY_PAGES, start=1):
-            document_id = self.ingest_photo(
-                sender_id=DEMO_SENDER["sender_id"], message_id=f"wamid.seed-{number}", media_ref=ref,
-            )["document_id"]
+        outbound, self.outbound_enabled = self.outbound_enabled, False  # seed messages are never sent to a phone
+        try:
+            for number, ref in enumerate(DEMO_HISTORY_PAGES, start=1):
+                document_id = self.ingest_photo(
+                    sender_id=DEMO_SENDER["sender_id"], message_id=f"wamid.seed-{number}", media_ref=ref,
+                )["document_id"]
+        finally:
+            self.outbound_enabled = outbound
         self.close_capture(document_id)
         self.process_document(document_id)
         self.select_patient(document_id, reviewer="seed", choice="NEW")
@@ -290,8 +296,7 @@ class DayOneService:
             acknowledgment = f"Reçu : page {position}. Merci, le traitement est en cours."
             db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'IN', NULL, ?, ?)",
                        (sender_id, media_ref, _iso(now)))
-            db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'OUT', ?, NULL, ?)",
-                       (sender_id, acknowledgment, _iso(now)))
+            self._queue_out(db, sender_id, acknowledgment, now)
             self._event(db, document_id, "PAGE_RECEIVED", "system", now,
                         {"page_id": page_id, "position": position, "captured_at": captured_at})
         return {"page_id": page_id, "document_id": document_id, "position": position,
@@ -328,8 +333,7 @@ class DayOneService:
         acknowledgment = f"Reçu : nouvelle photo de la page {old['position']}. Merci, le traitement reprend."
         db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'IN', NULL, ?, ?)",
                    (old["sender_id"], media_ref, _iso(now)))
-        db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'OUT', ?, NULL, ?)",
-                   (old["sender_id"], acknowledgment, _iso(now)))
+        self._queue_out(db, old["sender_id"], acknowledgment, now)
         self._event(db, document_id, "PAGE_RETAKEN", "system", now,
                     {"old_page_id": old["page_id"], "page_id": page_id, "position": old["position"]})
         pending = db.execute(
@@ -362,8 +366,7 @@ class DayOneService:
             db.execute("UPDATE pages SET retake_requested_at = ?, retake_reason = ? WHERE page_id = ?",
                        (_iso(now), reason, page["page_id"]))
             body = f"Merci de reprendre la photo de la page {page['position']}" + (f" : {reason}" if reason else ".")
-            db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'OUT', ?, NULL, ?)",
-                       (page["sender_id"], body, _iso(now)))
+            self._queue_out(db, page["sender_id"], body, now)
             self._event(db, page["document_id"], "RETAKE_REQUESTED", actor, now,
                         {"page_id": page["page_id"], "position": page["position"], "reason": reason})
         self._set_status(db, page["document_id"], "MANUAL_REVIEW_REQUIRED", now, actor=actor)
@@ -380,10 +383,51 @@ class DayOneService:
         self._set_status(db, row["document_id"], "PENDING_AI", now)
         return None
 
+    # ------------------------------------------------------------------ outbound messages
+
+    def _queue_out(self, db, sender_id: str, body: str, now: datetime) -> None:
+        """Every message to a midwife goes through here: shown in the thread, and queued for WhatsApp if enabled."""
+        db.execute("INSERT INTO messages(sender_id, direction, body, media_ref, created_at, delivery_status) "
+                   "VALUES (?, 'OUT', ?, NULL, ?, ?)",
+                   (sender_id, body, _iso(now), "PENDING" if self.outbound_enabled else "SIMULATED"))
+
+    def queue_message(self, sender_id: str, body: str) -> None:
+        with self.store.tx() as db:
+            if db.execute("SELECT 1 FROM senders WHERE sender_id = ?", (sender_id,)).fetchone() is None:
+                raise Forbidden("UNKNOWN_SENDER", "Numéro non enregistré auprès d'un établissement.")
+            self._queue_out(db, sender_id, body, self.clock())
+
+    def pending_outbound(self, max_attempts: int) -> list[dict]:
+        with self.store.read() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT id, sender_id, body FROM messages WHERE direction = 'OUT' "
+                "AND delivery_status IN ('PENDING', 'RETRY') AND delivery_attempts < ? ORDER BY id", (max_attempts,))]
+
+    def mark_outbound(self, message_id: int, *, provider_id: str | None = None, failed: bool = False,
+                      error: str | None = None) -> None:
+        with self.store.tx() as db:
+            if failed:
+                db.execute("UPDATE messages SET delivery_status = 'RETRY', delivery_attempts = delivery_attempts + 1, "
+                           "delivery_error = ? WHERE id = ?", (error, message_id))
+            else:
+                db.execute("UPDATE messages SET delivery_status = 'SENT', delivery_attempts = delivery_attempts + 1, "
+                           "provider_message_id = ?, delivery_error = NULL WHERE id = ?", (provider_id, message_id))
+
+    def close_sender_capture(self, sender_id: str) -> str | None:
+        """The midwife wrote "fin": her open group of pages goes to extraction now."""
+        with self.store.tx() as db:
+            row = db.execute("SELECT document_id FROM documents WHERE sender_id = ? AND status = 'CAPTURED' "
+                             "ORDER BY document_id DESC LIMIT 1", (sender_id,)).fetchone()
+            if row is None:
+                return None
+            self._set_status(db, row["document_id"], "PENDING_AI", self.clock(), actor=sender_id)
+            return row["document_id"]
+
     def thread(self, sender_id: str) -> list[dict]:
         with self.store.read() as db:
             rows = db.execute(
-                "SELECT id, direction, body, media_ref, created_at FROM messages WHERE sender_id = ? ORDER BY id",
+                "SELECT id, direction, body, media_ref, created_at, delivery_status FROM messages "
+                "WHERE sender_id = ? ORDER BY id",
                 (sender_id,),
             ).fetchall()
         return [dict(row) for row in rows]
