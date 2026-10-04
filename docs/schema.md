@@ -13,9 +13,18 @@ Machine-readable definitions live in `dayone/schema.py`; fixtures in `fixtures/`
 | Current pregnancy, left (`1-4.jpg`) | *Grossesse actuelle*, 1st trimester visit columns + DDR | Visits `T1_V1`–`T1_V3`, LMP |
 | Current pregnancy, right (`1-5.jpg`) | 2nd trimester, 7th/8th/9th month columns | Visits `T2_V1`–`T2_V3`, `M7`, `M8`, `M9` |
 
-Each **column** of the visit grid is one **encounter** (antenatal visit). One photo can contain several encounters.
+Each **column** of the visit grid is one **encounter** (antenatal visit). One photo can contain several encounters, and one document can contain several pages.
 
 Other sections (history, delivery, postpartum, newborn) are out of the v1 field set.
+
+### Several visits and several pages
+
+These rules extend v1.0 without changing its shape. Every existing draft and fixture stays valid.
+
+- **One encounter per populated column.** A column is populated when OCR read something other than a dash in any of its rows. A populated column without a readable date is kept: its `visit_date` has no value and blocks registration (`REQUIRED_MISSING`). Empty columns create no encounter. A column with ink but no text read creates no encounter either, because the blank-cell check also sees ink in some empty cells. The page goes to review instead (`GRID_COLUMN_UNREAD`, columns listed in `pages[].grid.unread_columns`). Encounters follow the column order `T1_V1` … `M9`, never only the latest visit.
+- **The same slot on several pages** (two photos of one grid) gives **one** encounter. Agreeing pages keep the best reading. If the pages disagree, the field is `NEEDS_REVIEW` with no value and `CONFLICT_ACROSS_PAGES`. A disagreement is a different value, or a value or unread writing on one page and a verified blank on another. Nothing is silently overwritten: `source.readings` lists every page's reading. The same rule applies to document fields read on two covers or two grid pages.
+- **`encounters` may be empty.** This happens when no page shows the visit grid (cover, history, delivery, postpartum or newborn pages only), or when the grid is read and all its columns are empty. Registration then writes no visit. A grid page whose table cannot be found still gets one `MANUAL` encounter for manual entry, sourced to that page, even when other pages gave visits; until the reviewer confirms its section, the page itself also goes to review (`GRID_NOT_FOUND`). If such a page holds no new visit, the reviewer requests a retake or moves the page out of the document. A visit-like table on a page whose printed labels say another section is `SECTION_UNCERTAIN`, and gives no encounter until a reviewer chooses the section.
+- **Slot dates stay distinct:** two encounters with the same `visit_date` block registration (`DUPLICATE_ENCOUNTER_DATE`), as before.
 
 ## Field catalog (12 fields)
 
@@ -33,10 +42,10 @@ Other sections (history, delivery, postpartum, newborn) are out of the v1 field 
 | Field | Type / unit | Grid row | Validation |
 |-------|-------------|----------|------------|
 | `visit_date` | date | *Venue le* | ISO date, **required to register** |
-| `gestational_age_days` | integer, days | *Âge probable de la grossesse* (`16SA+3j` → 115) | 0–315 |
+| `gestational_age_days` | integer, days | *Âge probable de la grossesse* (`16SA+3j`, `16 SA 3 j`, `16+3` → 115; `16 SA` → 112) | 0–315 |
 | `weight_kg` | decimal, kg | *Poids* | 30–200 |
 | `systolic_bp_mmhg` | integer, mmHg | *TA* (`12/7` → 120) | 60–250 |
-| `diastolic_bp_mmhg` | integer, mmHg | *TA* (`12/7` → 70) | 30–150 |
+| `diastolic_bp_mmhg` | integer, mmHg | *TA* (`12/7` → 70, `12/7,5` → 75) | 30–150, below the systolic |
 | `fundal_height_cm` | integer, cm | *HU* | 5–50 |
 | `syphilis_test` | enum `NEGATIVE` / `POSITIVE` | *Syphilis (TPHA/VDRL)* | enum |
 | `hiv_test` | enum `NEGATIVE` / `POSITIVE` | *Sérologie VIH* | enum |
@@ -65,6 +74,21 @@ Every field, at both levels, has the same shape:
 - `value`: normalized value in the field's type/unit. `null` unless a value was read or entered.
 - `confidence`: extractor score in `[0, 1]`, or `null` for manual entry. **Heuristic until calibrated** on labeled pages.
 - `validation_flags`: format/plausibility warnings. Values are flagged, never silently changed.
+- `source`: where the value was read: `page_ref` (required), and optionally `row`, `column` and `bbox` (`[x0, y0, x1, y1]` as fractions of the image that was read). Two optional keys are checked by `validate_draft` when present:
+  - `readings`: present when two or more pages showed the field. It has one object per page, in page order: `page_ref`, `raw_text`, `value`, `field_status`, `confidence`, `validation_flags` and optionally `bbox`. It is evidence only: the field's own `value` and `field_status` are what count.
+  - `normalization`: present when the stored value is not the written number, for example `{"from": "cmHg", "to": "mmHg", "factor": 10}` for `12/7`, or `{"from": "weeks+days", "to": "days", "weeks": 28, "days": 3}` for `28 SA + 3 j`. `raw_text` keeps what was written.
+
+Gestational age is stored in days, so weeks plus days are never rounded. Days need a separator, a weeks unit or a `j` (`28+3`, `28 SA 3`, `28 3j`). `283`, `28 3` and decimal weeks (`28,5`) are refused, because they could be 28+3, 28+5 or a decimal.
+
+Reasons a value goes to review (flags added by local OCR, besides the reading flags in [ocr.md](./ocr.md)):
+
+| Flag | Meaning |
+|------|---------|
+| `CONFLICT_ACROSS_PAGES` | Pages disagree; no value is chosen. A field with this flag cannot be `KNOWN` before a reviewer acts |
+| `OCR_TEXT_SPANS_COLUMNS` | One text box crossed a column rule. It was split into words by position, and both cells are reviewed |
+| `BP_LOOKS_LIKE_DATE` | The TA cell holds a date (`10/05/2025`), or a pair with a leading zero (`10/05`, `12/07`) |
+| `BP_ORDER_IMPLAUSIBLE` | The diastolic would not be below the systolic (`11/12` would give 110/120) |
+| `GA_FORMAT_AMBIGUOUS` | Decimal weeks (`28.5`): no value, because the days would be guessed |
 
 ### Field status (`field_status`): what the paper says
 
@@ -123,7 +147,53 @@ One draft per document (re-extraction replaces it and increments `draft_revision
 }
 ```
 
-`extraction.extractor` is `fixture`, `manual`, or the real model name (only `fixture` and `manual` exist today); `extractor_version` must change whenever prompts/models change so results are traceable.
+`extraction.extractor` is `fixture`, `manual`, or the OCR engine name (`paddleocr`, `tesseract`); `extractor_version` must change whenever prompts, models or the parser change, so that results are traceable.
+
+`pages[]` items need `page_ref`; local OCR adds `section`, `section_source` (`detected` or `reviewer`), `section_confidence`, `read`, `review_reason` (a blocking page item, e.g. `UNKNOWN_LAYOUT`, `SECTION_UNCERTAIN`, `GRID_NOT_FOUND`, `GRID_COLUMN_UNREAD`, `PHOTO_UNUSABLE`, `OCR_TIMEOUT`), `image` geometry and, on grid pages, `grid`: `{"found": true, "visit_columns": [...], "unread_columns": [...], "blank_columns": [...]}` or `{"found": false}`. A section chosen by the reviewer settles the page (`review_reason` null); its unread fields still go to review one by one. The reviewer sets it with `POST /api/pages/{page_id}/section` and `{"section": "<section or null>", "expected_revision": <revision shown>}`; a stale revision is refused (`STALE_REVISION`), and a change discards the draft's review and extracts the document again.
+
+### Extended fields (optional `extended` key, catalog `excel-ext-1`)
+
+Paper values beyond the 12 fields, read for the CSV columns of [excel-field-mapping.md](./excel-field-mapping.md). The key is optional: fixtures and v1.0 drafts without it stay valid, and `schema_version` stays `1.0`. It is defined in `dayone/extended.py`, read by `dayone/ocr_extended.py` (specimen layout only, decision D7), and validated by `validate_draft` when present. `GET /api/system` lists it under `catalog.extended`, with each field's scope, kind, unit, choices and paper source.
+
+```json
+"extended": {
+  "catalog_version": "excel-ext-1",
+  "pregnancy": {"maternal_age_years": {"...": "field value object"}},
+  "previous_deliveries": [{"column": 1, "fields": {"previous_delivery_date": {"...": "field value object"}}}],
+  "visit_labs": [{"slot": "T1_V1", "fields": {"hemoglobin_g_dl": {"...": "field value object"}}}],
+  "newborns": [{"index": 1, "fields": {"birth_weight_g": {"...": "field value object"}}}],
+  "newborn_consultations": [{"period": "EARLY", "fields": {"feeding_mode": {"...": "field value object"}}}]
+}
+```
+
+| Section | Scope | Item key | Fields (unit) | Page |
+|---------|-------|----------|---------------|------|
+| `patient` | patient | none | `education_level_text` (text, as written) | identification |
+| `pregnancy` | pregnancy | none | `maternal_age_years` (years), `gravidity`, `parity`, `living_children_count`, `abortions_count` (counts), `consanguinity_mark`, `pregnancy_desired_mark` (box state), `height_cm` (cm) | identification; height on the pregnancy grid page |
+| `previous_deliveries` | previous delivery | `column` 1–5 (*Accouch. n*) | `previous_delivery_date`, `previous_delivery_mode_text` (text, as written) | identification |
+| `visit_labs` | visit | `slot` (grid column) | `hemoglobin_g_dl` (g/dL), `blood_glucose_g_l` (g/L, fasting not stated), `albuminuria` (`NEGATIVE`/`POSITIVE`) | pregnancy grid |
+| `delivery` | delivery | none | `delivery_date`, `delivery_gestational_age_days` (days), `delivery_mode` (`VAGINAL_NON_INSTRUMENTAL`, `VAGINAL_INSTRUMENTAL`, `CESAREAN_PLANNED`, `CESAREAN_EMERGENCY`) | delivery |
+| `newborns` | newborn | `index` (1 = the one newborn block) | `newborn_sex` (`FEMALE`/`MALE`), `birth_weight_g` (g), `birth_head_circumference_cm` (cm) | delivery |
+| `newborn_consultations` | newborn consultation | `period` `EARLY`/`LATE` | `consultation_date`, `feeding_mode` (`EXCLUSIVE_BREASTFEEDING`, `ARTIFICIAL`, `MIXED`) | newborn post-partum |
+
+Rules:
+
+- **Present means read.** A section exists only when a page of its type was read; a field exists only when its page type was read. An absent section or field was not captured; it is never `NOT_PROVIDED`.
+- **Only direct readings.** Nothing is computed across pages, visits or previous deliveries, converted to a CSV code, or filled in. A box is stored as `MARKED` or `UNMARKED`; an empty box is not "no" (D5). `blood_glucose_g_l` is never called fasting, `albuminuria` is not proteinuria, `feeding_mode` is the feeding on the day of a later consultation and not proof of initiation at birth. Family history is not read at all. No pre-pregnancy weight or BMI exists on the forms, so none is stored.
+- **Item keys are positions on the page**, never CIN, names or patient IDs. No pregnancy, delivery or newborn ID exists until D1 and D6 are decided.
+- **Kind `choice`** (new): a closed set of codes with accepted French spellings (`FieldSpec.choices`). The value is the code. **`FieldSpec.decimals`** (new, default 1) sets the rounding of a decimal; glucose keeps 2.
+- **Field value objects** are the same as above. A checkbox value has `confidence: null` and `source.checkboxes`: `[{"label", "state", "ink"}]` with `state` in `MARKED`, `UNMARKED`, `UNCLEAR`, `BOX_NOT_FOUND`, `LABEL_NOT_FOUND`.
+- **Never blocking.** Extended fields are not in `review.blocking` and do not stop registration. The final confirmation does **not** confirm them: an extended field is `CONFIRMED` or `CORRECTED` only after an explicit review of that field, otherwise it stays `UNVERIFIED`.
+- **Kept with the document.** The draft, including `extended`, stays in `documents.draft_json` after registration. Extended values are not written to `visits.fields_json`; no table was added.
+
+| Flag | Meaning |
+|------|---------|
+| `CHECKBOX_UNCLEAR` | Ink inside the box is between the empty and marked limits |
+| `CHECKBOX_NOT_FOUND` | The label was read but no printed square was found next to it |
+| `CHECKBOX_MULTIPLE_MARKED` | Several boxes of one choice are marked; no value |
+| `CHECKBOX_NONE_MARKED` | Every box of one choice is clearly empty (`NOT_PROVIDED`) |
+| `LAB_WITHOUT_VISIT` | A lab cell has writing in a grid column that is not a visit |
+| `OCR_CONFIRM_REQUIRED` | Always on handwritten counts and free text (also used for cover fields) |
 
 ## Identifiers
 
@@ -157,7 +227,7 @@ Failure/parking states: `PROCESSING_FAILED`, `DUPLICATE_SUSPECTED`, `MANUAL_REVI
 | `PROCESSING_FAILED` | No usable extraction; reviewer can start manual entry |
 | `DUPLICATE_SUSPECTED` | Reviewer answered *Je ne sais pas* to the patient question |
 
-**Blocking fields:** unverified fields in `NEEDS_REVIEW` or `ILLEGIBLE`, and any `visit_date` without a value.
+**Blocking fields:** pages with a `review_reason` (listed first), unverified fields in `NEEDS_REVIEW` or `ILLEGIBLE` (including `CONFLICT_ACROSS_PAGES`), any `visit_date` without a value, and two encounters with the same date. Extended fields never block. Extractors never mark a field as verified: only a reviewer's action, or the final confirmation, sets `CONFIRMED` or `CORRECTED`.
 
 **Registration gate:** only `PATIENT_MATCHED` can be confirmed, and only by an explicit reviewer action. Auto-linking never registers. A document with a `PENDING` retake request cannot be confirmed (`409 RETAKE_PENDING`).
 

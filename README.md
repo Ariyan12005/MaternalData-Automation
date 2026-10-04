@@ -2,7 +2,7 @@
 
 Platform that turns **photos of paper maternal registries** into structured digital records, **tracks each woman across visits**, and routes uncertain extractions to **back-office review**.
 
-**Midwives only send documents** on WhatsApp; they do not manage patients or verify fields in chat. In the current MVP, WhatsApp is **simulated** in the browser by default. An optional WhatsApp Cloud API mode exists, but it has only been tested against a mocked Meta API so far. Extraction uses **fixtures** (see [Simulator vs. real integration](#simulator-vs-real-integration)).
+**Midwives only send documents** on WhatsApp; they do not manage patients or verify fields in chat. In the current MVP, WhatsApp is **simulated** in the browser by default. An optional WhatsApp Cloud API mode exists, but it has only been tested against a mocked Meta API so far. Extraction uses **fixtures** by default; an optional local OCR mode reads the synthetic specimen layout (see [Optional: local OCR](#optional-local-ocr-synthetic-specimen-layout) and [Simulator vs. real integration](#simulator-vs-real-integration)).
 
 **Challenge:** *Une sage-femme, un téléphone et une IA* / *The Offline Midwife* (Challenge ID **17**).
 
@@ -65,13 +65,40 @@ python -m dayone --env-file .env --whatsapp-mode cloud --hold-outbound   # recei
 
 The back-office stays on `127.0.0.1:8000`. Meta's webhook is served by a separate listener on `127.0.0.1:8001` that answers only `/webhooks/whatsapp`. Expose **only port 8001** through an HTTPS tunnel; never expose port 8000. Meta app setup, credentials, exposure strategy, privacy cautions and the sandbox checklist: [docs/whatsapp-cloud.md](./docs/whatsapp-cloud.md).
 
+### Optional: local OCR (synthetic specimen layout)
+
+Reads photos of the synthetic specimen pages (`dossiers_specimen_10_patientes-NN.png`) with PaddleOCR on the CPU, in a separate process. No page leaves the machine. It needs Python 3.12 in the project `.venv` (PaddlePaddle has no wheel for Python 3.14) and about 0.9 GB of disk (0.7 GB packages, 0.15 GB models). Details: [docs/ocr.md](./docs/ocr.md).
+
+```powershell
+$env:UV_LINK_MODE = "copy"                                       # OneDrive rejects uv's hardlinks
+uv venv --python 3.12 .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements-ocr.txt
+.venv\Scripts\python -m dayone.ocr_engines download              # models, about 133 MB (the only network step)
+.venv\Scripts\python -m dayone.ocr_engines check
+.venv\Scripts\python -m dayone --extractor paddle --db var/dayone-ocr.sqlite3 --port 8020
+```
+
+Use a separate database so the fixture demo is not mixed with OCR drafts. Limits: `DAYONE_OCR_TIMEOUT_SECONDS` per page (default 120), `DAYONE_OCR_DOCUMENT_TIMEOUT_SECONDS` per document (600).
+
+**Supported layouts.** Only the specimen: the cover (file number and facility, always confirmed by a person), the *Grossesse actuelle* visit grid (one encounter per visit column, with lab rows and the DDR), and as optional extended fields its identification, delivery and newborn consultation pages. Post-partum mother pages are recognised but not read. The pink booklet (`1-x.jpg`) and any other layout are not supported.
+
+**Measured results** (80 specimen pages with a checked ground truth; patients 1–5 for development, 6–10 held out; full tables in [docs/ocr-evaluation.md](./docs/ocr-evaluation.md)):
+
+| Condition | Correct KNOWN / written values | Wrong KNOWN | Blank filled in | Visits right | Median s / page |
+|---|---|---|---|---|---|
+| Clean renders, development | 255/355 | 0 | 0/110 | 30/30 columns | 12.8 |
+| Clean renders, held-out | 209/312 | 0 | 0/92 | 25/25 columns | 11.0 |
+| Simulated photos (3 conditions) | 474/979 | 8 | 0/294 | 80/80 columns | 6.4–9.3 |
+
+**Limitations.** No real phone photo has been tested. On simulated photos 8 wrong values were marked KNOWN (0.8 %), with scores of 0.97 or more; the final confirmation records every unopened KNOWN value as confirmed, so the reviewer must check the summary against the page. Scores are not calibrated. About a third of the values on clean pages, and more than half on noisy ones, still need review. The held-out clean pages had been seen while tuning thresholds. Pages are read one at a time (6–22 s each).
+
 ### Screen layout
 
-The back-office workspace is the main screen (French): review queue on the left, the open document in the centre, and the patient timeline below. The **Prochaine action** panel at the top of the document always says what to do next. It shows the current question, the patient choice or the confirmation summary. Drafts are labelled *Brouillon — non enregistré*; saved data is labelled *Enregistré*. Status and confidence are always written as text (for example *à vérifier · confiance faible (42 %)*), not only shown by colour.
+The back-office workspace is the main screen (French): review queue on the left, the open document in the centre, and the patient timeline below. The **Prochaine action** panel at the top of the document always says what to do next. It shows the current question, the patient choice or the confirmation summary. Drafts are labelled *Brouillon — non enregistré*; saved data is labelled *Enregistré*. Status is always written as text (for example *À vérifier*), not only shown by colour. A value's engine score is shown as *Score de lecture … (indicatif)*: it is not a calibrated probability.
 
-The **simulated midwife phone** sits on the right (below the workspace on narrower screens) in a dashed frame labelled *Simulateur*. The *IA disponible* toggle and *Réinitialiser la démo* are grouped under *Contrôles de démonstration*.
+The **simulated midwife phone** sits on the right (below the workspace on narrower screens) in a dashed frame labelled *Simulateur*. The *Extraction disponible (simulé)* toggle and *Réinitialiser la démo* are grouped under *Contrôles de démonstration*.
 
-Queue entries and grid cells are buttons, so the screen works with Tab / Enter. Escape closes a correction form or a simulator reply.
+Keyboard: queue entries, field rows and actions are reachable with Tab and activated with Enter or Space. Visit tabs move with ← / → / Home / End. Escape closes a correction form, the open field or a simulator reply; the page preview is a dialog that returns focus where it was opened.
 
 ### Demo script
 
@@ -80,13 +107,13 @@ The presenter version, with the manual-entry path and the separately labelled hy
 1. **Midwife (simulated phone on the right):** select `1-1.jpg` then `1-5.jpg`, then press **Envoyer (2)**. Each page gets an acknowledgment, and the document appears in the queue as a provisional group.
 2. Wait about 8 s (the grouping window). The fixture extractor produces a draft with 3 visits and **2 uncertain fields**.
 3. **Back-office:** answer the questions in **Prochaine action**:
-   - Hauteur utérine (2e trimestre – visite 1) is illegible ("2? cm"). Click **Corriger** and enter `25`, or **Confirmer « illisible »**.
-   - Date of the 9th-month visit was read as "1?/12/25" at 42 % confidence. Click **Corriger** and enter `19/12/2025`, which matches the 40 SA + 1 j gestational age.
+   - Hauteur utérine (2e trimestre – visite 1) is illegible ("2? cm"). Click **Saisir la valeur** and enter `25`, or **Confirmer « illisible »**.
+   - Date of the 9th-month visit was read as "1?/12/25" (reading score 42 %, indicative only). Click **Corriger** and enter `19/12/2025`, which matches the 40 SA + 1 j gestational age.
 4. **Patient:** `PAT-000001` is *suggested* because both keys match. Click **Choisir la patiente 1 : PAT-000001**. Nothing is saved yet.
 5. **Confirmer et enregistrer:** 3 visits are created, and the timeline shows 6 visits, with the new ones marked *dossier ouvert*.
 6. Optional checks:
    - **Rejouer le dernier webhook** is ignored as a duplicate.
-   - Untick **IA disponible** and send photos: they wait in `PENDING_AI` until it is ticked again.
+   - Untick **Extraction disponible (simulé)** and send photos: they wait in `PENDING_AI` until it is ticked again.
    - **Déplacer… → nouveau dossier** splits a page into its own document.
 
 ### Retake demo
@@ -104,6 +131,12 @@ Run this before step 5 above, or on any document that is not yet registered.
 |------|-------|---------|
 | `docs/schema.md`, `docs/identity-strategy.md` | all | Contracts (fields, statuses, IDs, linking, visit identity, duplicates) |
 | `fixtures/*.json`, `dayone/extraction.py`, `dayone/schema.py` | Fatma | Fixtures, extractor interface, draft validator |
+| `dayone/ocr_engines.py`, `dayone/live_ocr.py`, `dayone/ocr_extended.py`, `dayone/extended.py`, `requirements-ocr*.txt`, `docs/ocr.md` | Aymane (started from Fatma's `origin/pinar` extractor) | Local OCR engines (PaddleOCR primary, Tesseract optional), the parser that turns OCR boxes into a v1.0 draft, and the optional extended fields |
+| `dayone/ocr_process.py`, `dayone/ocr_preprocess.py`, `dayone/extraction_pool.py`, `dayone/live_ocr_adapter.py` | Aymane | OCR in a separate process with a per-page timeout, image preparation, extraction off the WhatsApp worker loop, and the adapter for `--extractor paddle`/`tesseract` (media paths, error mapping, draft checks) |
+| `eval/specimen-ground-truth.json`, `tools/ocr_ground_truth.py`, `tools/ocr_evaluate.py`, `docs/ocr-evaluation.md` | Aymane (for Fatma's review) | Checked ground truth of the 80 specimen pages, development/held-out evaluation, results |
+| `tests/test_live_ocr*.py`, `tests/test_ocr_*.py`, `tests/test_extraction_pool.py`, `tests/test_extended.py`, `tests/test_real_ocr.py`, `tools/ocr_specimen_eval.py` | Aymane | Mocked OCR tests; opt-in real-OCR test (`DAYONE_REAL_OCR=1`); the earlier text-layer evaluation |
+| `dayone/export_columns.py`, `docs/excel-field-mapping.md` | all | The 31 CSV columns and what blocks each (nothing is exported yet) |
+| `dayone/extraction_http.py`, `docs/extractor-contract.md`, `tests/test_extraction_http.py` | Fatma + Aymane | HTTP extractor adapter, prepared but unused; extraction boundary, contract and open questions |
 | `dayone/store.py`, `dayone/service.py`, `dayone/linking.py` | Ariyan | Storage, lifecycle, review/confirm/timeline operations |
 | `dayone/server.py`, `dayone/static/` | Aymane | HTTP API, simulated WhatsApp, webhook-only listener, back-office screen, Day1 logo (`logo-day1.jpg`) |
 | `dayone/whatsapp.py`, `.env.example`, `docs/whatsapp-cloud.md`, `tools/webhook_relay.py`, `tools/hybrid_media_test.py` | Aymane (storage parts: Ariyan) | Cloud API adapter: webhook verification and parsing, media download, durable inbound/outbound jobs, outbound hold, configuration CLI, sandbox tools |
@@ -247,8 +280,8 @@ new authenticated `/api/extraction/jobs/<job_id>/failure` endpoint.
 | WhatsApp outbound | Acknowledgments and retake requests stored in the database and shown in the simulated thread | Implemented, mocked tests only: durable send queue with retries and delivery statuses. No template messages, so nothing can be sent more than 24 h after the midwife's last message |
 | Retake reply | The simulator sends `retake_request_id` explicitly with the replacement photo | Implemented, mocked tests only: a photo sent as a reply to the retake message replaces the page. Whether WhatsApp includes that reply context for images still needs sandbox verification |
 | Senders | One seeded demo number mapped to *C/S Sidi Smail* | `python -m dayone.whatsapp add-sender`. Messages from unregistered numbers are rejected without downloading the photo |
-| Extraction | `FixtureExtractor` returns a hand-written draft for `1-1.jpg` + `1-4.jpg` or `1-1.jpg` + `1-5.jpg`; any other page set fails and goes to manual entry. Values are illustrative, not ground truth | Not started: OCR / vision model behind the same interface |
-| AI outage | "IA disponible" toggle | Would be a real extractor timeout or failure |
+| Extraction | `FixtureExtractor` returns a hand-written draft for `1-1.jpg` + `1-4.jpg` or `1-1.jpg` + `1-5.jpg`; any other page set fails and goes to manual entry. Values are illustrative, not ground truth | `--extractor paddle` runs local PaddleOCR from the project `.venv` in a separate process with a per-page timeout ([docs/ocr.md](./docs/ocr.md)). It reads the specimen layout: the pregnancy visit grid (one encounter per visit column), the cover keys, and optional extended fields. Evaluated on synthetic specimen renders and simulated photos only, not on real phone photos ([docs/ocr-evaluation.md](./docs/ocr-evaluation.md)). Uncertain values go to review; names are never extracted. `--extractor tesseract` is optional and untested here. `--extractor http` stays unused: [docs/extractor-contract.md](./docs/extractor-contract.md) |
+| AI outage | "Extraction disponible (simulé)" toggle | With local OCR: a missing install keeps documents queued; a page over the timeout or an engine crash is marked unread (the OCR process is restarted), and a document with no readable page fails and goes to retake or manual entry |
 
 ### Open blockers and limitations
 
@@ -260,7 +293,8 @@ Tracked in [tasks.md](./tasks.md#blockers-and-open-gaps-keep-visible-until-resol
 - **Shared authentication.** Atlas requires a shared staff/API credential; individual users and facility RBAC remain unimplemented. Demo reset is disabled for Atlas or any database with an outbound hold. Use HTTPS for remote staff access.
 - **Offline gaps.** There is no on-device encrypted storage, and no demo of "offline capture, then return of connectivity". The demo shows the platform-side equivalent instead (AI outage, then recovery). `SYNCED` is not implemented.
 - **Retake over real WhatsApp is unverified.** In cloud mode, the request is sent as a reply quoting the photo, and the midwife's reply is matched to the request. Both are tested only with mocks. A registered document cannot be retaken: new photos form a new document, which goes through the update/keep decision for existing visits.
-- **Manual entry** covers a single encounter and is available for closed scans waiting for extraction or after extraction failure.
+- **Manual entry** covers a single encounter and is available for closed scans waiting for extraction or after extraction failure. Starting it while a read is running makes that read's result stale; it is discarded.
+- **Local OCR is evaluated on synthetic pages only.** No real phone photo has been read. On simulated photos, 8 of 979 written values were wrong but marked KNOWN, and confirmation saves unopened KNOWN values as confirmed. Only the specimen layout is supported. See [docs/ocr-evaluation.md](./docs/ocr-evaluation.md).
 
 Backend integration details, OCR media interfaces, verification and the remaining
 transport work are recorded in [docs/backend-integration.md](docs/backend-integration.md).

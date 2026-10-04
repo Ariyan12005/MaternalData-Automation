@@ -7,13 +7,16 @@ import hmac
 import json
 import logging
 import re
+import secrets
 import tempfile
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import linking, schema
-from .extraction import ExtractionError, FixtureExtractor
+from . import export_columns, extended, linking, schema
+from .extraction import (RETAKE_REASONS, ExtractionCancelled, ExtractionError, ExtractorUnavailable,
+                         FixtureExtractor)
 from .store import Store, next_id
 
 log = logging.getLogger("dayone.service")
@@ -26,6 +29,9 @@ INBOUND_MEDIA_NAME = re.compile(r"[0-9a-f]{64}\.(?:jpg|png)")
 DEMO_FACILITY = {"facility_id": "FAC-SIDI-SMAIL", "name": "C/S Sidi Smail"}
 DEMO_SENDER = {"sender_id": "whatsapp:+212600000001", "label": "Sage-femme – C/S Sidi Smail"}
 DEMO_HISTORY_PAGES = ("data/Paper Registry/1-1.jpg", "data/Paper Registry/1-4.jpg")
+EXTERNAL_LEASE = timedelta(minutes=5)
+# Tokens of in-process extraction leases; external workers get unprefixed tokens.
+LOCAL_TOKEN_PREFIX = "local-"
 
 
 class ServiceError(Exception):
@@ -85,6 +91,19 @@ class DayOneService:
         self.window = timedelta(seconds=grouping_window_seconds)
         self.clock = clock
         self.media_store = media_store
+        # Folder for the page files that extraction_media decrypts for path-based OCR (None: the system temp folder).
+        # The server points it at its OCR run folder, which the next start removes if this process dies.
+        self.extraction_temp_dir: Path | None = None
+        # Lease of an in-process extraction. It must outlast the extractor's bounded run (the server sets it from the
+        # OCR timeouts); external workers keep EXTERNAL_LEASE.
+        self.local_lease = EXTERNAL_LEASE
+        # Documents being extracted right now: {document_id: {"pages_done", "pages", "started_at", "last_page"}}.
+        # In memory only; extraction runs on the extraction pool's thread.
+        self._progress: dict[str, dict] = {}
+        # Documents whose last extraction attempt hit an unavailable extractor or an unexpected error and that stay
+        # queued for another attempt: {document_id: {"attempts", "reason", "failed_at"}}. Same lock, in memory only.
+        self._retries: dict[str, dict] = {}
+        self._progress_lock = threading.Lock()
 
     # ------------------------------------------------------------------ setup
 
@@ -118,7 +137,8 @@ class DayOneService:
                 sender_id=DEMO_SENDER["sender_id"], message_id=f"wamid.seed-{number}", media_ref=ref,
             )["document_id"]
         self.close_capture(document_id)
-        self.process_document(document_id)
+        # Always the reviewed fixture, whatever the extractor: the booklet photos are never sent to OCR.
+        self.process_document(document_id, extractor=FixtureExtractor(self.repo_root / "fixtures"))
         self.select_patient(document_id, reviewer="seed", choice="NEW")
         self.confirm(document_id, reviewer="seed")
 
@@ -132,7 +152,29 @@ class DayOneService:
             "grouping_window_seconds": int(self.window.total_seconds()),
             "extractor": "external" if self.extractor is None else getattr(self.extractor, "name", type(self.extractor).__name__),
             "catalog": schema.catalog(),
+            "retake_reasons": RETAKE_REASONS,
+            "extracting": self.extraction_progress(),
         }
+
+    def extraction_progress(self, document_id: str | None = None):
+        """Progress of the documents being extracted (all, or one document's progress or None)."""
+        with self._progress_lock:
+            if document_id is not None:
+                return dict(self._progress[document_id]) if document_id in self._progress else None
+            return [{"document_id": d, **p} for d, p in sorted(self._progress.items())]
+
+    def extraction_retry(self, document_id: str) -> dict | None:
+        """The failed attempts of a document still queued for extraction, or None."""
+        with self._progress_lock:
+            return dict(self._retries[document_id]) if document_id in self._retries else None
+
+    def _note_attempt(self, document_id: str, reason: str | None) -> None:
+        with self._progress_lock:
+            if reason is None:
+                self._retries.pop(document_id, None)
+                return
+            previous = self._retries.get(document_id, {}).get("attempts", 0)
+            self._retries[document_id] = {"attempts": previous + 1, "reason": reason, "failed_at": _iso(self.clock())}
 
     def set_ai_available(self, available: bool) -> dict:
         with self.store.tx() as db:
@@ -198,7 +240,7 @@ class DayOneService:
         Extractors that accept bytes should use read_media directly. Returned
         paths retain their original ref as the dictionary key for provenance.
         """
-        with tempfile.TemporaryDirectory(prefix="dayone-extraction-") as directory:
+        with tempfile.TemporaryDirectory(prefix="dayone-extraction-", dir=self.extraction_temp_dir) as directory:
             paths = {}
             for index, ref in enumerate(page_refs):
                 suffix = Path(ref).suffix.lower()
@@ -253,7 +295,6 @@ class DayOneService:
         return {"ok": True}
 
     def claim_job(self, document_id=None):
-        import secrets
         now = self.clock()
         with self.store.tx() as db:
             if not self._ai_available(db):
@@ -262,15 +303,34 @@ class DayOneService:
             for document in rows:
                 if document_id and document["document_id"] != document_id:
                     continue
-                old = db.execute("SELECT * FROM jobs WHERE document_id=? AND revision=?", (document["document_id"], document["revision"])).fetchone()
-                if old and (old["state"] == "DONE" or datetime.fromisoformat(old["lease_until"]) > now):
-                    continue
-                job_id = old["job_id"] if old else next_id(db, "JOB")
-                token = secrets.token_urlsafe(32)
-                lease = _iso(now + timedelta(minutes=5))
-                db.execute("INSERT INTO jobs VALUES (?, ?, ?, ?, ?, 'LEASED') ON CONFLICT(job_id) DO UPDATE SET token=excluded.token, lease_until=excluded.lease_until, state='LEASED'", (job_id, document["document_id"], document["revision"], token, lease))
-                return {"job_id": job_id, "document_id": document["document_id"], "expected_revision": document["revision"], "token": token, "lease_until": lease, "page_refs": self._page_refs(db, document["document_id"])}
+                job = self._lease(db, document, now, EXTERNAL_LEASE, "")
+                if job is not None:
+                    return job
         return None
+
+    def _lease(self, db, document, now: datetime, duration: timedelta, prefix: str) -> dict | None:
+        """Lease the document's current revision, unless it is done or leased until later (by anyone)."""
+        old = db.execute("SELECT * FROM jobs WHERE document_id=? AND revision=?", (document["document_id"], document["revision"])).fetchone()
+        if old and (old["state"] == "DONE" or datetime.fromisoformat(old["lease_until"]) > now):
+            return None
+        job_id = old["job_id"] if old else next_id(db, "JOB")
+        token = prefix + secrets.token_urlsafe(32)
+        lease = _iso(now + duration)
+        db.execute("INSERT INTO jobs VALUES (?, ?, ?, ?, ?, 'LEASED') ON CONFLICT(job_id) DO UPDATE SET token=excluded.token, lease_until=excluded.lease_until, state='LEASED'", (job_id, document["document_id"], document["revision"], token, lease))
+        return {"job_id": job_id, "document_id": document["document_id"], "expected_revision": document["revision"], "token": token, "lease_until": lease, "page_refs": self._page_refs(db, document["document_id"])}
+
+    def release_local_leases(self) -> int:
+        """At server start: the in-process extractions of a previous run ended with it, so their documents can be
+        extracted again at once instead of after their lease. External leases are kept."""
+        now = _iso(self.clock())
+        with self.store.tx() as db:
+            return db.execute("UPDATE jobs SET lease_until = ? WHERE state = 'LEASED' AND lease_until > ? "
+                              "AND token LIKE ?", (now, now, LOCAL_TOKEN_PREFIX + "%")).rowcount
+
+    @staticmethod
+    def _job_held(job_row, job: dict, now: datetime) -> bool:
+        return (job_row is not None and _secret_equal(job_row["token"], job["token"]) and job_row["state"] == "LEASED"
+                and datetime.fromisoformat(job_row["lease_until"]) > now)
 
     def complete_job(self, job_id, *, token, draft, expected_revision):
         if type(expected_revision) is not int:
@@ -278,7 +338,7 @@ class DayOneService:
         problems = schema.validate_draft(draft)
         if problems:
             raise Invalid("INVALID_EXTRACTION", "Extraction violates shared schema", problems)
-        for _scope, _index, _slot, _name, fv in schema.iter_fields(draft):
+        for *_where, fv in [*schema.iter_fields(draft), *extended.iter_fields(draft)]:
             if fv["verification"]["state"] != "UNVERIFIED" or fv["corrections"]:
                 raise Invalid("EXTRACTOR_VERIFICATION", "Extraction cannot claim human verification")
         now = self.clock()
@@ -400,7 +460,7 @@ class DayOneService:
             raise Conflict("RETAKE_NOT_PENDING", "Cette demande de reprise est déjà close.", {"status": request["status"]})
         original = db.execute("SELECT * FROM pages WHERE page_id = ?", (request["page_id"],)).fetchone()
         document = self._load_document(db, original["document_id"])
-        if document["status"] == "REGISTERED":
+        if document["status"] in ("REGISTERED", "SYNCED"):
             raise Conflict("ALREADY_REGISTERED", "Ce dossier est déjà enregistré.")
 
         page_id = next_id(db, "PAGE")
@@ -443,7 +503,7 @@ class DayOneService:
             if page["replaced_by"]:
                 raise Conflict("PAGE_REPLACED", f"Cette page a déjà été remplacée par {page['replaced_by']}.")
             document = self._load_document(db, page["document_id"])
-            if document["status"] == "REGISTERED":
+            if document["status"] in ("REGISTERED", "SYNCED"):
                 raise Conflict("ALREADY_REGISTERED",
                                "Ce dossier est déjà enregistré : les nouvelles photos formeront un nouveau dossier.")
             existing = db.execute("SELECT request_id FROM retake_requests WHERE page_id = ? AND status = 'PENDING'",
@@ -452,9 +512,12 @@ class DayOneService:
                 return {**self._retakes(db, "r.request_id = ?", (existing["request_id"],))[0], "created": False}
 
             request_id = next_id(db, "RTK")
+            reason = self._retake_reason(db, document, page)
+            body = f"Merci de reprendre la photo de la page {page['position']}" + (
+                f" : {RETAKE_REASONS[reason]}" if reason else ".")
             message = db.execute(
                 "INSERT INTO messages(sender_id, direction, body, media_ref, created_at) VALUES (?, 'OUT', ?, NULL, ?)",
-                (page["sender_id"], f"Merci de reprendre la photo de la page {page['position']}.", _iso(now)),
+                (page["sender_id"], body, _iso(now)),
             )
             db.execute(
                 "INSERT INTO retake_requests(request_id, document_id, page_id, sender_id, facility_id, status, "
@@ -463,8 +526,33 @@ class DayOneService:
                  reviewer, _iso(now), message.lastrowid),
             )
             self._event(db, document["document_id"], "RETAKE_REQUESTED", reviewer, now,
-                        {"request_id": request_id, "page_id": page_id, "position": page["position"]})
+                        {"request_id": request_id, "page_id": page_id, "position": page["position"], "reason": reason})
             return {**self._retakes(db, "r.request_id = ?", (request_id,))[0], "created": True}
+
+    def _retake_reason(self, db, document, page) -> str | None:
+        """Why the extractor could not use this page's photo (a RETAKE_REASONS key), from the draft or the failure."""
+        if document["draft_json"]:
+            draft = json.loads(document["draft_json"])
+            index = page["position"] - 1
+            if 0 <= index < len(draft["pages"]) and draft["pages"][index]["page_ref"] == page["media_ref"]:
+                reason = draft["pages"][index].get("retake_reason")
+                return reason if reason in RETAKE_REASONS else None
+            return None
+        detail = self._failure_detail(db, document)
+        reason = next((p["reason"] for p in detail.get("pages", []) if p["page_id"] == page["page_id"]), None)
+        return reason if reason in RETAKE_REASONS else None
+
+    @staticmethod
+    def _failure_detail(db, document) -> dict:
+        """Detail of the extraction failure that put the document in PROCESSING_FAILED ({} otherwise)."""
+        if document["status"] != "PROCESSING_FAILED":
+            return {}
+        for row in db.execute("SELECT detail_json FROM events WHERE document_id = ? AND type = 'STATUS_CHANGED' "
+                              "ORDER BY id DESC", (document["document_id"],)):
+            detail = json.loads(row["detail_json"])
+            if detail.get("to") == "PROCESSING_FAILED":
+                return detail
+        return {}
 
     def cancel_retake(self, request_id: str, *, reviewer: str) -> dict:
         reviewer = self._reviewer(reviewer)
@@ -533,8 +621,8 @@ class DayOneService:
                 self._set_status(db, document_id, "PENDING_AI", self.clock())
         return {"ok": True}
 
-    def tick(self) -> list[str]:
-        """Close expired grouping windows, then extract queued documents if AI is available."""
+    def queued_documents(self) -> list[str]:
+        """Close expired grouping windows; return the documents waiting for extraction (none while AI is off)."""
         now = self.clock()
         with self.store.tx() as db:
             for row in db.execute("SELECT document_id, last_page_at FROM documents WHERE status = 'CAPTURED' AND document_id NOT IN (SELECT document_id FROM capture_groups)").fetchall():
@@ -542,51 +630,170 @@ class DayOneService:
                     self._set_status(db, row["document_id"], "PENDING_AI", now)
             if not self._ai_available(db):
                 return []
-            pending = [row["document_id"] for row in db.execute(
+            return [row["document_id"] for row in db.execute(
                 "SELECT document_id FROM documents WHERE status = 'PENDING_AI' ORDER BY document_id")]
-        return [document_id for document_id in pending if self.process_document(document_id)]
 
-    def process_document(self, document_id: str) -> bool:
-        if self.extractor is None:
-            return False
-        job = self.claim_job(document_id)
-        if job is None:
-            return False
-        refs = job["page_refs"]
-        draft, failure = None, None
-        try:
-            draft = self.extractor.extract(refs)
-            problems = schema.validate_draft(draft)
-            if problems:
-                draft, failure = None, ("INVALID_EXTRACTION", problems[0])
-        except ExtractionError as exc:
-            failure = (exc.code, exc.message)
-        except Exception:
-            log.error("extraction failed for %s; will retry", document_id)
-            return False
+    def tick(self) -> list[str]:
+        """Close expired grouping windows, then extract queued documents in this thread if AI is available.
 
-        if draft is not None:
-            try:
-                self.complete_job(job["job_id"], token=job["token"], draft=draft, expected_revision=job["expected_revision"])
-            except Conflict:
-                return False
-            return True
-        now = self.clock()
+        The server uses dayone/extraction_pool.py instead, so that extraction never delays WhatsApp jobs.
+        """
+        return [document_id for document_id in self.queued_documents() if self.process_document(document_id)]
+
+    def process_document(self, document_id: str, *, extractor=None) -> bool:
+        return self.extract_document(document_id, extractor=extractor) == "DONE"
+
+    def extract_document(self, document_id: str, *, extractor=None) -> str:
+        """Extract one queued document in this process, under an extraction lease like an external worker's.
+
+        Returns DONE (draft saved or failure recorded), STALE (pages, section choices or revision changed meanwhile,
+        or the lease was lost: extract again now), RETRY (extractor unavailable: try again later) or SKIPPED (no
+        local extractor, AI off, not queued, or leased by another worker)."""
+        extractor = extractor or self.extractor
+        if extractor is None:
+            return "SKIPPED"
         with self.store.tx() as db:
             document = db.execute("SELECT * FROM documents WHERE document_id = ?", (document_id,)).fetchone()
-            if document is None or document["revision"] != job["expected_revision"] or document["status"] != "PENDING_AI" or self._page_refs(db, document_id) != refs:
-                return False
+            if document is None or document["status"] != "PENDING_AI" or not self._ai_available(db):
+                return "SKIPPED"
+            job = self._lease(db, document, self.clock(), self.local_lease, LOCAL_TOKEN_PREFIX)
+            if job is None:
+                return "SKIPPED"
+            state = self._page_state(db, document_id)
+        refs = [ref for _page_id, ref, _hint in state]
+
+        def is_current() -> bool:
+            with self.store.read() as db:
+                return self._still_current(db, document_id, job, state, self.clock())
+
+        def progress(done: int, total: int, outcome: str) -> None:
+            with self._progress_lock:
+                entry = self._progress.get(document_id)
+                if entry is not None:
+                    entry.update(pages_done=done, pages=total, last_page=outcome)
+            log.info("extraction of %s: page %d/%d %s", document_id, done, total, outcome)
+
+        draft, failure = None, None
+        with self._progress_lock:
+            self._progress[document_id] = {"pages_done": 0, "pages": len(refs), "started_at": _iso(self.clock()),
+                                           "last_page": None}
+        try:
+            if getattr(extractor, "accepts_page_context", False):
+                draft = extractor.extract(refs, section_hints=[hint for *_rest, hint in state], is_current=is_current,
+                                          progress=progress)
+            else:
+                draft = extractor.extract(refs)
+            problems = schema.validate_draft(draft)
+            if problems:
+                draft, failure = None, ExtractionError("INVALID_EXTRACTION", problems[0])
+        except ExtractionError as exc:
+            failure = exc
+        except ExtractionCancelled:
+            self._release_lease(job)
+            return "STALE"
+        except ExtractorUnavailable as exc:
+            log.warning("extractor unavailable for %s (%s); will retry", document_id, exc.code)
+            self._release_lease(job)
+            self._note_attempt(document_id, exc.code)
+            return "RETRY"
+        except Exception as exc:
+            # The type only: a message or traceback may quote page text or draft values.
+            log.error("extraction error for %s (%s); will retry", document_id, type(exc).__name__)
+            self._release_lease(job)
+            self._note_attempt(document_id, "EXTRACTION_ERROR")
+            return "RETRY"
+        finally:
+            with self._progress_lock:
+                self._progress.pop(document_id, None)
+
+        if draft is not None:
+            problem = self._draft_problem(draft, refs)
+            if problem:
+                draft, failure = None, ExtractionError(*problem)
+        now = self.clock()
+        with self.store.tx() as db:
+            if not self._still_current(db, document_id, job, state, now):
+                self._release_lease(job, db)
+                return "STALE"
             if draft is None:
-                active = db.execute("SELECT * FROM jobs WHERE job_id=?", (job["job_id"],)).fetchone()
-                if (active["token"] != job["token"] or active["state"] != "LEASED"
-                        or datetime.fromisoformat(active["lease_until"]) <= now):
-                    return False
-                db.execute("UPDATE jobs SET state='FAILED' WHERE job_id=?", (job["job_id"],))
-                db.execute("UPDATE documents SET failure_reason = ? WHERE document_id = ?", (failure[0], document_id))
-                self._set_status(db, document_id, "PROCESSING_FAILED", now,
-                                 detail={"code": failure[0], "message": failure[1]})
-                return True
-        return True
+                detail = {"code": failure.code, "message": failure.message}
+                pages = [{"page_id": state[p["index"]][0], "position": p["index"] + 1, "reason": p["reason"]}
+                         for p in getattr(failure, "pages", []) if 0 <= p.get("index", -1) < len(state)]
+                if pages:
+                    detail["pages"] = pages
+                db.execute("UPDATE jobs SET state = 'FAILED' WHERE job_id = ?", (job["job_id"],))
+                db.execute("UPDATE documents SET failure_reason = ? WHERE document_id = ?", (failure.code, document_id))
+                self._set_status(db, document_id, "PROCESSING_FAILED", now, detail=detail)
+            else:
+                draft["extraction"]["processed_at"] = _iso(now)
+                self._save_draft(db, document_id, draft, now)
+                db.execute("UPDATE jobs SET state = 'DONE' WHERE job_id = ?", (job["job_id"],))
+                db.execute("UPDATE documents SET failure_reason = NULL WHERE document_id = ?", (document_id,))
+                self._set_status(db, document_id, "AI_PROCESSED", now)
+                self._recompute_status(db, document_id, now)
+        self._note_attempt(document_id, None)
+        return "DONE"
+
+    def _still_current(self, db, document_id: str, job: dict, state: list, now: datetime) -> bool:
+        """The lease is still this extraction's, and the document is still the queued revision with the same pages
+        and section choices (page IDs, not media refs: a replacement photo may reuse the same media ref)."""
+        document = db.execute("SELECT status, revision FROM documents WHERE document_id = ?", (document_id,)).fetchone()
+        return (document is not None and document["status"] == "PENDING_AI"
+                and document["revision"] == job["expected_revision"]
+                and self._job_held(db.execute("SELECT * FROM jobs WHERE job_id = ?", (job["job_id"],)).fetchone(), job, now)
+                and self._page_state(db, document_id) == state)
+
+    def _release_lease(self, job: dict, db=None) -> None:
+        """Ends this extraction's lease early so that the document can be claimed again without waiting for it."""
+        if db is None:
+            with self.store.tx() as db:
+                self._release_lease(job, db)
+            return
+        db.execute("UPDATE jobs SET lease_until = ? WHERE job_id = ? AND token = ? AND state = 'LEASED'",
+                   (_iso(self.clock()), job["job_id"], job["token"]))
+
+    @staticmethod
+    def _draft_problem(draft: dict, page_refs: list[str]) -> tuple[str, str] | None:
+        """What an extractor may not do, locally or through the job API: claim a human review, or describe other
+        pages than the ones it was given."""
+        for *_rest, fv in [*schema.iter_fields(draft), *extended.iter_fields(draft)]:
+            if fv["verification"]["state"] != "UNVERIFIED" or fv["corrections"]:
+                return "EXTRACTOR_VERIFICATION", "Extraction cannot claim human verification"
+        if set(p["page_ref"] for p in draft["pages"]) != set(page_refs):
+            return "PAGE_MISMATCH", "Extraction pages differ from capture"
+        return None
+
+    def set_page_section(self, page_id: str, *, reviewer: str, section: str | None,
+                         expected_revision: int | None = None) -> dict:
+        """Record the reviewer's section for a page (None: back to detection) and extract the document again."""
+        reviewer = self._reviewer(reviewer)
+        if section is not None and section not in schema.PAGE_SECTIONS:
+            raise Invalid("UNKNOWN_SECTION", "Section de page inconnue.")
+        now = self.clock()
+        with self.store.tx() as db:
+            page = db.execute("SELECT * FROM pages WHERE page_id = ?", (page_id,)).fetchone()
+            if page is None:
+                raise NotFound("PAGE_NOT_FOUND", "Page introuvable.")
+            if page["replaced_by"]:
+                raise Conflict("PAGE_REPLACED", f"Cette page a été remplacée par {page['replaced_by']}.")
+            document = self._load_document(db, page["document_id"])
+            if document["status"] in ("REGISTERED", "SYNCED"):
+                raise Conflict("ALREADY_REGISTERED", "Ce dossier est déjà enregistré.")
+            self._check_revision(document, expected_revision)
+            if page["section_hint"] == section:
+                return self.get_document(document["document_id"])
+            db.execute("UPDATE pages SET section_hint = ? WHERE page_id = ?", (section, page_id))
+            detail = {"page_id": page_id, "position": page["position"], "section": section,
+                      "previous": page["section_hint"]}
+            if document["status"] not in ("CAPTURED", "PENDING_AI"):
+                detail.update(self._discard_review(db, document["document_id"], now))
+            else:
+                db.execute("UPDATE documents SET revision = revision + 1, updated_at = ? WHERE document_id = ?",
+                           (_iso(now), document["document_id"]))
+            self._event(db, document["document_id"], "PAGE_SECTION_SET", reviewer, now, detail)
+            if document["status"] != "CAPTURED":
+                self._set_status(db, document["document_id"], "PENDING_AI", now, actor=reviewer)
+        return self.get_document(document["document_id"])
 
     def start_manual_entry(self, document_id: str, *, reviewer: str, expected_revision: int | None = None) -> dict:
         reviewer = self._reviewer(reviewer)
@@ -605,19 +812,25 @@ class DayOneService:
 
     def review_field(self, document_id: str, *, reviewer: str, scope: str, field: str, action: str,
                      encounter_index: int | None = None, value: object = None, field_status: str | None = None,
-                     expected_revision: int | None = None) -> dict:
+                     expected_revision: int | None = None, section: str | None = None,
+                     item_index: int | None = None) -> dict:
+        """scope "extended" reviews a field of draft["extended"] (section, item_index for list sections)."""
         reviewer = self._reviewer(reviewer)
-        spec = schema.FIELDS.get(field)
-        if spec is None or spec.scope != scope:
+        spec = extended.FIELDS.get(field) if scope == "extended" else schema.FIELDS.get(field)
+        if spec is None or (scope != "extended" and spec.scope != scope) or (
+                scope == "extended" and extended.SECTION_OF[field] != section):
             raise Invalid("UNKNOWN_FIELD", "Champ inconnu pour cette section.")
         now = self.clock()
         with self.store.tx() as db:
             document = self._load_reviewable(db, document_id, expected_revision)
             draft = json.loads(document["draft_json"])
             try:
-                fv = schema.get_field(draft, scope, field, encounter_index)
+                if scope == "extended":
+                    fv = extended.get_field(draft, section, item_index, field)
+                else:
+                    fv = schema.get_field(draft, scope, field, encounter_index)
             except KeyError:
-                raise Invalid("UNKNOWN_ENCOUNTER", "Visite inconnue dans ce dossier.") from None
+                raise Invalid("UNKNOWN_ENCOUNTER", "Visite ou élément inconnu dans ce dossier.") from None
             previous = {"value": fv["value"], "field_status": fv["field_status"]}
 
             if action == "CONFIRM":
@@ -653,8 +866,9 @@ class DayOneService:
             if field in schema.KEY_FIELDS:
                 db.execute("UPDATE documents SET selection_json=NULL WHERE document_id=?", (document_id,))
             slot = draft["encounters"][encounter_index]["slot"] if scope == "encounter" else None
+            where = {"section": section, "item_index": item_index} if scope == "extended" else {}
             self._event(db, document_id, "FIELD_REVIEWED", reviewer, now, {
-                "scope": scope, "encounter_index": encounter_index, "slot": slot, "field": field,
+                "scope": scope, "encounter_index": encounter_index, "slot": slot, **where, "field": field,
                 "action": action, "previous": previous,
                 "new": {"value": fv["value"], "field_status": fv["field_status"]},
             })
@@ -693,7 +907,7 @@ class DayOneService:
         now = self.clock()
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
-            if document["status"] == "REGISTERED":
+            if document["status"] in ("REGISTERED", "SYNCED"):
                 return {**json.loads(document["registration_json"]), "replayed": True}
             pending = db.execute("SELECT request_id FROM retake_requests WHERE document_id = ? AND status = 'PENDING'",
                                  (document_id,)).fetchall()
@@ -836,14 +1050,14 @@ class DayOneService:
                 raise Conflict("RETAKE_PENDING", "Une reprise est en attente pour cette page : annulez-la avant de la déplacer.")
             source = self._load_document(db, page["document_id"])
             self._check_revision(source, expected_revision)
-            if source["status"] == "REGISTERED":
+            if source["status"] in ("REGISTERED", "SYNCED"):
                 raise Conflict("ALREADY_REGISTERED", "Ce dossier est déjà enregistré.")
             if target_document_id:
                 if target_document_id == source["document_id"]:
                     raise Invalid("SAME_DOCUMENT", "La page est déjà dans ce dossier.")
                 target = self._load_document(db, target_document_id)
                 self._check_revision(target, target_expected_revision)
-                if target["status"] == "REGISTERED":
+                if target["status"] in ("REGISTERED", "SYNCED"):
                     raise Conflict("ALREADY_REGISTERED", "Le dossier cible est déjà enregistré.")
                 if target["facility_id"] != source["facility_id"]:
                     raise Forbidden("OTHER_FACILITY", "Le dossier cible appartient à un autre établissement.")
@@ -899,7 +1113,8 @@ class DayOneService:
         draft = _loads(document["draft_json"])
         discarded = {
             "discarded_reviews": sum(
-                1 for *_, fv in schema.iter_fields(draft) if fv["verification"]["state"] != "UNVERIFIED"
+                1 for *_, fv in [*schema.iter_fields(draft), *extended.iter_fields(draft)]
+                if fv["verification"]["state"] != "UNVERIFIED"
             ) if draft else 0,
             "selection_discarded": document["selection_json"] is not None,
         }
@@ -934,6 +1149,8 @@ class DayOneService:
                 "blocking_count": len(schema.blocking_fields(draft)) if draft else 0,
                 "encounter_count": len(draft["encounters"]) if draft else 0,
                 "patient_id": registration["patient_id"] if registration else None,
+                "extracting": self.extraction_progress(row["document_id"]) is not None,
+                "retrying": row["status"] == "PENDING_AI" and self.extraction_retry(row["document_id"]) is not None,
             })
         return items
 
@@ -943,8 +1160,9 @@ class DayOneService:
             retakes = self._retakes(db, "r.document_id = ?", (document_id,))
             pending_by_page = {r["page_id"]: r["request_id"] for r in retakes if r["status"] == "PENDING"}
             pages = [{**dict(row), "pending_retake_id": pending_by_page.get(row["page_id"])} for row in db.execute(
-                "SELECT page_id, position, media_ref, received_at, source_message_id FROM pages "
+                "SELECT page_id, position, media_ref, received_at, source_message_id, section_hint FROM pages "
                 "WHERE document_id = ? AND replaced_by IS NULL ORDER BY position", (document_id,))]
+            failure = self._failure_detail(db, document)
             draft = _loads(document["draft_json"])
             selection = _loads(document["selection_json"])
             review = None
@@ -972,10 +1190,14 @@ class DayOneService:
                 "ORDER BY document_id DESC", (document["facility_id"], document_id))]
         return {
             "document": {
-                key: document[key] for key in (
+                **{key: document[key] for key in (
                     "document_id", "status", "grouping_status", "sender_id", "facility_id",
                     "created_at", "last_page_at", "updated_at", "revision", "failure_reason",
-                )
+                )},
+                "failure_message": failure.get("message"),
+                "failure_pages": failure.get("pages", []),
+                "extraction_progress": self.extraction_progress(document_id),
+                "extraction_retry": self.extraction_retry(document_id) if document["status"] == "PENDING_AI" else None,
             },
             "next_step": review["next_step"] if review else self._next_step(document["status"], [], None, [],
                                                                              bool(pending_by_page)),
@@ -999,7 +1221,7 @@ class DayOneService:
             return "WAITING_AI"
         if status == "PROCESSING_FAILED":
             return "FAILED"
-        if status == "REGISTERED":
+        if status in ("REGISTERED", "SYNCED"):
             return "DONE"
         if blocking:
             return "FIELD"
@@ -1087,6 +1309,13 @@ class DayOneService:
             "SELECT media_ref FROM pages WHERE document_id = ? AND replaced_by IS NULL ORDER BY position", (document_id,))]
 
     @staticmethod
+    def _page_state(db, document_id: str) -> list[tuple[str, str, str | None]]:
+        """(page_id, media_ref, section_hint) of the active pages: what an extraction result was computed from."""
+        return [tuple(row) for row in db.execute(
+            "SELECT page_id, media_ref, section_hint FROM pages WHERE document_id = ? AND replaced_by IS NULL "
+            "ORDER BY position", (document_id,))]
+
+    @staticmethod
     def _page_ids(db, document_id: str) -> list[str]:
         return [row["page_id"] for row in db.execute(
             "SELECT page_id FROM pages WHERE document_id = ? AND replaced_by IS NULL ORDER BY position", (document_id,))]
@@ -1124,3 +1353,241 @@ class DayOneService:
     def _event(db, document_id: str | None, event_type: str, actor: str, now: datetime, detail: dict) -> None:
         db.execute("INSERT INTO events(document_id, type, actor, at, detail_json) VALUES (?, ?, ?, ?, ?)",
                    (document_id, event_type, actor, _iso(now), _dumps(detail)))
+
+    # ------------------------------------------------------------------ sync, conversational & export
+
+    def sync_document(self, document_id: str, *, reviewer: str = "system",
+                      central_sink: Callable[[dict], dict] | None = None) -> dict:
+        """Synchronize a registered document and its visits with the central registry (simulated).
+        Transitions status from REGISTERED to SYNCED. Idempotent on retry."""
+        reviewer = self._reviewer(reviewer)
+        now = self.clock()
+        with self.store.tx() as db:
+            document = self._load_document(db, document_id)
+            if document["status"] == "SYNCED":
+                return {"document_id": document_id, "status": "SYNCED", "synced": True, "replayed": True}
+            if document["status"] != "REGISTERED":
+                raise Conflict("NOT_REGISTERED", "Seuls les dossiers enregistrés peuvent être synchronisés.",
+                               {"status": document["status"]})
+            registration = json.loads(document["registration_json"]) if document["registration_json"] else {}
+            patient_id = registration.get("patient_id")
+            visits = [
+                dict(row) for row in db.execute(
+                    "SELECT visit_id, visit_date, slot, encounter_type, fields_json FROM visits WHERE patient_id = ?",
+                    (patient_id,)
+                ).fetchall()
+            ] if patient_id else []
+            sync_payload = {
+                "document_id": document_id,
+                "facility_id": document["facility_id"],
+                "patient_id": patient_id,
+                "visits": visits,
+                "synced_at": _iso(now),
+            }
+            if central_sink is not None:
+                central_sink(sync_payload)
+            self._set_status(db, document_id, "SYNCED", now, actor=reviewer)
+            self._event(db, document_id, "DOCUMENT_SYNCED", reviewer, now,
+                        {"patient_id": patient_id, "visits_count": len(visits)})
+        return {"document_id": document_id, "status": "SYNCED", "synced": True, "replayed": False}
+
+    def conversational_prompt(self, document_id: str) -> dict:
+        """Returns structured prompt, question text in French, and available actions for a conversational midwife client."""
+        doc = self.get_document(document_id)
+        d = doc["document"]
+        status = d["status"]
+        step = doc.get("next_step")
+        review = doc.get("review") or {}
+        blocking = review.get("blocking", [])
+        matches = review.get("matches", []) or review.get("encounter_matches", [])
+        visits = review.get("visits", []) or matches
+
+        if step == "WAITING_AI":
+            return {
+                "step": "WAITING_AI",
+                "question": "Votre photo est en cours d'analyse par l'IA. Merci de patienter quelques instants.",
+                "actions": [],
+                "document_id": document_id,
+            }
+        if step == "WAITING_RETAKE":
+            return {
+                "step": "WAITING_RETAKE",
+                "question": "Une reprise de photo est en attente. Merci d'envoyer la nouvelle photo.",
+                "actions": [],
+                "document_id": document_id,
+            }
+        if step == "FAILED":
+            return {
+                "step": "FAILED",
+                "question": "La lecture de la fiche a échoué. Souhaitez-vous démarrer la saisie manuelle ou reprendre la photo ?",
+                "actions": ["MANUAL_ENTRY", "RETAKE"],
+                "document_id": document_id,
+                "expected_revision": d["revision"],
+            }
+        if step == "DONE":
+            return {
+                "step": "DONE",
+                "question": f"Le dossier est {'synchronisé' if status == 'SYNCED' else 'enregistré'} avec succès.",
+                "actions": ["SYNC"] if status == "REGISTERED" else [],
+                "document_id": document_id,
+            }
+        if step == "FIELD":
+            first = blocking[0]
+            field_name = first.get("field")
+            spec = schema.FIELDS.get(field_name) or extended.FIELDS.get(field_name)
+            label = spec.label if spec else field_name
+            val = first.get("value")
+            val_str = f"« {val} »" if val is not None else "illisible ou absent"
+            q = f"Question de vérification : pour le champ {label}, la valeur lue est {val_str}. Souhaitez-vous confirmer cette valeur, la corriger, ou la marquer illisible ?"
+            return {
+                "step": "FIELD",
+                "field": first,
+                "question": q,
+                "actions": ["CONFIRM", "CORRECT", "ILLEGIBLE", "NOT_PROVIDED"],
+                "document_id": document_id,
+                "expected_revision": d["revision"],
+            }
+        if step == "PATIENT":
+            suggested = next((m for m in matches if m.get("suggested")), None) or review.get("suggested_patient_id")
+            if suggested:
+                pat_id = suggested if isinstance(suggested, str) else suggested.get("patient_id")
+                q = f"Patiente suggérée : {pat_id} correspond aux clés du registre. Confirmez-vous cette patiente, est-ce une nouvelle patiente, ou êtes-vous incertaine ?"
+                candidate_id = pat_id
+            else:
+                q = "Aucune patiente ne correspond aux clés. Souhaitez-vous créer une nouvelle patiente ou choisir parmi les patientes existantes ?"
+                candidate_id = None
+            return {
+                "step": "PATIENT",
+                "question": q,
+                "suggested_patient_id": candidate_id,
+                "actions": ["CHOOSE", "NEW", "UNSURE"],
+                "document_id": document_id,
+                "expected_revision": d["revision"],
+            }
+        if step == "EXISTING_VISITS":
+            return {
+                "step": "EXISTING_VISITS",
+                "question": "Certaines visites existent déjà avec des valeurs différentes. Souhaitez-vous mettre à jour les valeurs ou conserver l'existante ?",
+                "actions": ["UPDATE", "KEEP"],
+                "document_id": document_id,
+                "expected_revision": d["revision"],
+            }
+        return {
+            "step": "CONFIRM",
+            "question": f"Toutes les vérifications sont terminées. Confirmer et enregistrer les visites ?",
+            "visits": visits,
+            "actions": ["CONFIRM"],
+            "document_id": document_id,
+            "expected_revision": d["revision"],
+        }
+
+    def conversational_reply(self, document_id: str, *, reviewer: str = "midwife", action: str, **kwargs) -> dict:
+        """Processes a midwife's conversational response and returns the updated conversational state."""
+        prompt = self.conversational_prompt(document_id)
+        step = prompt.get("step")
+        rev = prompt.get("expected_revision")
+
+        if step == "FIELD":
+            field_info = prompt["field"]
+            act = action.upper()
+            if act == "CONFIRM":
+                self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
+                                  field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
+                                  section=field_info.get("section"), item_index=field_info.get("item_index"),
+                                  action="CONFIRM", expected_revision=rev)
+            elif act == "CORRECT":
+                val = kwargs.get("value")
+                self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
+                                  field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
+                                  section=field_info.get("section"), item_index=field_info.get("item_index"),
+                                  action="CORRECT", value=val, expected_revision=rev)
+            elif act in ("ILLEGIBLE", "NOT_PROVIDED"):
+                self.review_field(document_id, reviewer=reviewer, scope=field_info.get("scope"),
+                                  field=field_info.get("field"), encounter_index=field_info.get("encounter_index"),
+                                  section=field_info.get("section"), item_index=field_info.get("item_index"),
+                                  action="SET_STATUS", field_status=act, expected_revision=rev)
+            elif act == "RETAKE":
+                pages = self.get_document(document_id)["pages"]
+                if pages:
+                    self.request_retake(pages[0]["page_id"], reviewer=reviewer)
+            else:
+                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape FIELD.")
+
+        elif step == "PATIENT":
+            act = action.upper()
+            if act in ("CHOOSE", "PATIENT", "EXISTING"):
+                pat_id = kwargs.get("patient_id") or prompt.get("suggested_patient_id")
+                if not pat_id:
+                    raise Invalid("PATIENT_ID_REQUIRED", "Identifiant de la patiente requis.")
+                self.select_patient(document_id, reviewer=reviewer, choice="EXISTING", patient_id=pat_id, expected_revision=rev)
+            elif act == "NEW":
+                self.select_patient(document_id, reviewer=reviewer, choice="NEW", expected_revision=rev)
+            elif act == "UNSURE":
+                self.select_patient(document_id, reviewer=reviewer, choice="UNSURE", expected_revision=rev)
+            else:
+                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape PATIENT.")
+
+        elif step == "EXISTING_VISITS":
+            dec = action.upper()
+            decisions = {str(i): dec for i in range(len(prompt.get("visits", [])))}
+            self.confirm(document_id, reviewer=reviewer, existing_visit_decisions=decisions, expected_revision=rev)
+
+        elif step == "CONFIRM":
+            if action.upper() == "CONFIRM":
+                self.confirm(document_id, reviewer=reviewer, existing_visit_decisions=kwargs.get("existing_visit_decisions"), expected_revision=rev)
+            else:
+                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape CONFIRM.")
+
+        elif step == "FAILED":
+            if action.upper() == "MANUAL_ENTRY":
+                self.start_manual_entry(document_id, reviewer=reviewer, expected_revision=rev)
+            elif action.upper() == "RETAKE":
+                pages = self.get_document(document_id)["pages"]
+                if pages:
+                    self.request_retake(pages[0]["page_id"], reviewer=reviewer)
+            else:
+                raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape FAILED.")
+
+        elif step == "DONE" and action.upper() == "SYNC":
+            self.sync_document(document_id, reviewer=reviewer)
+
+        return self.conversational_prompt(document_id)
+
+    def export_patient(self, patient_id: str, *, assumptions: dict | None = None) -> dict[str, object]:
+        """Produces a dictionary matching the 31 columns of maternal_registry_synthetic.csv for one patient."""
+        with self.store.read() as db:
+            patient = db.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,)).fetchone()
+            if patient is None:
+                raise NotFound("PATIENT_NOT_FOUND", "Patiente introuvable.")
+            visit_rows = db.execute("SELECT * FROM visits WHERE patient_id = ? ORDER BY visit_date", (patient_id,)).fetchall()
+            visits = [
+                {
+                    "visit_id": row["visit_id"], "visit_date": row["visit_date"], "slot": row["slot"],
+                    "encounter_type": row["encounter_type"], "fields": json.loads(row["fields_json"]),
+                    "sources": json.loads(row["source_documents_json"]),
+                }
+                for row in visit_rows
+            ]
+            source_doc_ids = set()
+            for v in visits:
+                source_doc_ids.update(v.get("sources", []))
+            extended_draft = None
+            for s_id in source_doc_ids:
+                s_doc = db.execute("SELECT draft_json FROM documents WHERE document_id = ?", (s_id,)).fetchone()
+                if s_doc and s_doc["draft_json"]:
+                    d_json = json.loads(s_doc["draft_json"])
+                    if d_json.get("extended"):
+                        extended_draft = d_json["extended"]
+                        break
+        return export_columns.compute_export_row(dict(patient), visits, extended_draft, assumptions=assumptions)
+
+    def export_all_patients(self, *, assumptions: dict | None = None) -> list[dict[str, object]]:
+        """Produces 31-column rows for every registered patient."""
+        with self.store.read() as db:
+            patient_ids = [row["patient_id"] for row in db.execute("SELECT patient_id FROM patients ORDER BY patient_id").fetchall()]
+        return [self.export_patient(pid, assumptions=assumptions) for pid in patient_ids]
+
+    def export_csv(self, *, assumptions: dict | None = None) -> str:
+        """Exports all patients to RFC-4180 CSV matching data/maternal_registry_synthetic.csv."""
+        rows = self.export_all_patients(assumptions=assumptions)
+        return export_columns.export_to_csv(rows)

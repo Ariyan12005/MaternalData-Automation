@@ -42,9 +42,9 @@ By default the WhatsApp side is a **simulator**: a phone panel in the browser po
 | 3 | **Encryption at rest**: SQLite database (drafts, visits, keys) and any stored media | "Local storage on the device must be encrypted" (consignes §4) | Ariyan | Not implemented: database is plain SQLite in `var/` |
 | 4 | **Authentication and roles** on every `/api/*` route | Anyone who can reach the port can review, confirm, read timelines, or call `POST /api/demo/reset` (wipes the database). Reviewer identity is a free-text `X-Reviewer` header | Ariyan + Aymane | Not implemented; server binds to `127.0.0.1` by default |
 | 5 | **Offline-capture demo** ("an offline capture, the return of connectivity") | Required demo scenario | Ariyan + Aymane | Not demonstrated. We only show the platform-side equivalent (AI outage, then recovery) |
-| 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan | Reserved, not implemented |
+| 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan + Aymane | Done: `sync_document()`, offline `item_status` tracking (`PENDING`, `SYNCED`, `FAILED`), idempotent replay (`tests/test_final_backend.py`) |
 | 7 | **Retake photo** over real WhatsApp | Rubric item (Confirm / Edit / **Retake**) | Aymane | Simulator done (`tests/test_retake.py`). Cloud API: the request is sent as a reply quoting the photo, and a reply quoting the request replaces the page. This is tested with mocks only (`test_reply_quoting_the_retake_request_replaces_the_page`). Open: sandbox check that image replies carry `context.id` (not documented for images), and template messages for requests sent more than 24 h after the midwife's last message. The actor is still back-office staff (#1) |
-| 8 | **Real extractor** | 30-pt extraction criterion | Fatma | Not started; `FixtureExtractor` only covers 2 page sets |
+| 8 | **Real extractor** | 30-pt extraction criterion | Aymane (from Fatma's extractor) | Partial: `--extractor paddle` runs local PaddleOCR (project `.venv`, `docs/ocr.md`) and reads the specimen visit grid, one encounter per visit column. Evaluated against a checked ground truth of the 80 specimen pages (`docs/ocr-evaluation.md`): clean renders 0 wrong KNOWN of 667 written values (72 % / 67 % correct KNOWN, development / held-out); simulated photos 8 wrong KNOWN of 979; every visit column found. Open: real phone photos (none tested), wrong KNOWN values on photos are saved as confirmed unless the reviewer catches them in the summary, the pink booklet layout, layout ID (D7), human spot-check of the ground truth, Tesseract unmeasured. Fixture mode stays the default |
 | 9 | **Real WhatsApp integration** | Bonus item; needed for a real pilot | Aymane | Partial: adapter implemented and tested against a mocked Meta API (`tests/test_whatsapp_cloud.py`). Observed on 2026-10-03 with a real Meta app (unpublished): webhook verification, a signed dashboard test webhook, real media upload and download into the review workflow, and duplicate replay. Open: real inbound messages need a **published app, which requires business verification**, and our app must be **subscribed to the WABA** (`GET /{waba-id}/subscribed_apps` does not list it; the fix, a `POST`, was not made). Also open: real sends, which are not authorised (sandbox databases are held), retake reply context, and template messages (`docs/whatsapp-cloud.md`, *Observed against Meta*). Depends on #3 (photos stored unencrypted), #4 and #10 (only the webhook listener may be exposed, through an HTTPS tunnel) |
 | 10 | **HTTPS** | Transport security | Ariyan | Not implemented (plain HTTP on localhost) |
 
@@ -54,8 +54,8 @@ By default the WhatsApp side is a **simulator**: a phone panel in the browser po
 
 | Criterion | Points | Primary owner | Current state |
 |-----------|--------|---------------|---------------|
-| Extraction quality (field accuracy on test set) | 30 | **Fatma** | No real extractor and no metrics yet |
-| Uncertainty (status + confidence, agent shows doubt) | 20 | **Fatma** + **Aymane** | Contract, validator and UI done; confidence values come from fixtures |
+| Extraction quality (field accuracy on test set) | 30 | **Fatma** | Local OCR (optional) measured on the synthetic specimen with a development / held-out split (`docs/ocr-evaluation.md`); no real photo tested; ground truth awaiting a human spot-check |
+| Uncertainty (status + confidence, agent shows doubt) | 20 | **Fatma** + **Aymane** | Contract, validator and UI done. With local OCR, uncertain values go to review (0 wrong KNOWN on clean renders, 8 of 979 on simulated photos); scores are shown as indicative and are not calibrated |
 | Conversational review (Confirm / Edit / Retake, follow-ups, multipage) | 20 | **Aymane** + **Ariyan** | **At risk**: reviewer is staff, not the midwife. Retake works in the simulator only |
 | Offline robustness (queue, states, sync after reconnect) | 15 | **Ariyan** (+ **Aymane**) | Platform queue durable; device-side offline and sync not done |
 | Patient linking + privacy (code-based link, no direct IDs stored) | 10 | **Ariyan** | Linking done; encryption and auth missing |
@@ -262,7 +262,8 @@ Any new field must be added to `docs/schema.md` and `dayone/schema.py` first.
 - [ ] Image-quality gate (would use the reserved `MANUAL_REVIEW_REQUIRED` state). The reviewer-initiated retake exists; an automatic retake suggestion does not.
 - [ ] More fixtures: partial page, PII-heavy page, other page sets. Only 2 page sets are covered; any other page set fails as `NO_FIXTURE_FOR_PAGE_SET`.
 - [ ] Extraction for fields beyond v1. The map exists (`docs/excel-field-mapping.md`); see [Full Excel coverage](#full-excel-coverage-shared-extension-not-started).
-- [ ] Replace illustrative fixture values with verified ground truth before computing accuracy.
+- [ ] Replace illustrative fixture values with verified ground truth before computing accuracy. (Local OCR is scored against `eval/specimen-ground-truth.json`, not the fixtures.)
+- [ ] Human spot-check of `eval/specimen-ground-truth.json` (the five recorded corrections first; `tools/ocr_ground_truth.py sheets` makes the verification crops).
 
 ### Handoff
 
@@ -270,7 +271,7 @@ Any new field must be added to `docs/schema.md` and `dayone/schema.py` first.
 |-------------|-------|
 | Extractor interface (`extract(page_refs)` → draft) | Exists in-process (`dayone/extraction.py`); no HTTP endpoint |
 | Fixtures | 2 page sets; more needed |
-| Eval script + metrics | Not started |
+| Eval script + metrics | Done for local OCR on the synthetic specimen, for Fatma's review: `tools/ocr_evaluate.py`, `eval/specimen-ground-truth.json` (checked by the AI coding assistant; human spot-check pending), results in `docs/ocr-evaluation.md` |
 | Failure catalog (blur, empty checkbox, Arabic) | Not started |
 
 **Done when:** uncertain or missing fields always arrive as `NEEDS_REVIEW` / `ILLEGIBLE` / `NOT_PROVIDED`, never as silent `KNOWN`, on real images.
@@ -328,7 +329,7 @@ Code: `dayone/whatsapp.py`, `make_webhook_handler` in `dayone/server.py`. Setup 
 - [x] **Retake request** per page (**Demander une reprise** / **Annuler la reprise**), pending and fulfilled requests listed under *Demandes de reprise*, confirmation blocked while one is pending (`test_confirmation_is_blocked_while_retake_is_pending`, `test_cancelled_request_unblocks_and_rejects_late_photo`). Not offered on registered documents (`test_no_retake_on_registered_document`).
 - [x] Screen layout: workspace first, *Prochaine action* panel, draft vs saved labels, status and confidence as text, simulator in a separate labelled frame, keyboard-operable queue and grid cells, responsive down to phone width. Checked in the browser (see README "Screen layout"); no automated UI tests.
 - [x] Manual entry after a failed extraction, for one encounter (`test_manual_entry_after_failed_extraction`).
-- [x] "IA disponible" toggle to simulate an AI outage.
+- [x] "Extraction disponible (simulé)" toggle to simulate an AI outage.
 
 ### Open (back-office)
 
@@ -438,12 +439,12 @@ Written for the Cloud API adapter (Aymane's area) but they touch Ariyan's storag
 - [ ] **Authentication and roles** on all `/api/*` routes, including `POST /api/demo/reset` and `/media/` (blocker 4).
 - [ ] **HTTPS** (blocker 10).
 - [ ] Media storage for real WhatsApp images: **encrypted** copy and role-restricted download. Plain content-addressed files linked to the page through `whatsapp_inbound.page_id` exist today.
-- [ ] `SYNCED` / central sync worker, plus `SYNC_FAILED` (blocker 6).
+- [x] `SYNCED` / central sync worker: implemented in `dayone/service.py` (`sync_document`), `dayone/offline.py` (durable queue with `PENDING`, `SYNCED`, `FAILED` states), and server endpoint `POST /api/documents/{id}/sync` (blocker 6). Tests in `tests/test_final_backend.py`.
 - [ ] Notification job after registration.
-- [ ] HTTP API for an external extractor (only the in-process interface exists).
+- [ ] Live extractor. Partial: local OCR (`dayone/ocr_engines.py`, `dayone/live_ocr.py`, `dayone/live_ocr_adapter.py`) with PaddleOCR as primary engine and Tesseract optional, installed in the project `.venv` (`docs/ocr.md`). OCR runs in a separate process with page and document timeouts, on its own extraction thread. Evaluated on synthetic specimen renders and simulated photo copies (`tools/ocr_evaluate.py`, `docs/ocr-evaluation.md`; opt-in `tests/test_real_ocr.py`); mocked tests cover the parser and the service path; restart, crash during extraction, retake during extraction and the page timeout were checked live on 2026-10-04. Open: real phone photos, other layouts, calibration on more data. `dayone/extraction_http.py` stays prepared for a future remote extractor; `--extractor http` refuses to start.
 - [ ] Retention policy for temporary files.
-- [ ] Test for a crash during extraction (the code keeps the document in `PENDING_AI` and retries; no test yet).
-- [ ] Export of anonymized JSON/CSV for a dashboard (optional bonus). The CSV column layout and its open decisions are in `docs/excel-field-mapping.md`.
+- [ ] Automated test for a server crash during extraction (checked live with local OCR on 2026-10-04: the document stayed `PENDING_AI` and was read again after restart; no unit test yet).
+- [x] Export of anonymized JSON/CSV for dashboard: implemented in `dayone/export_columns.py` (`compute_export_row`, `export_to_csv`), `dayone/service.py` (`export_patient`, `export_all_patients`, `export_csv`), and server endpoints `GET /api/patients/{id}/export`, `GET /api/export`, and `GET /api/export/csv`. Exact 31 columns matching `maternal_registry_synthetic.csv` without fabricating unmeasured data.
 
 ### Offline / recovery matrix
 
@@ -451,9 +452,10 @@ Written for the Cloud API adapter (Aymane's area) but they touch Ariyan's storag
 |-----------|-------------------|----------|
 | Phone offline | WhatsApp's outbox holds the photos and delivers them on reconnect; replays deduplicated | **Not demonstrated**; outbox is not our code (blockers 2, 5) |
 | WhatsApp cloud unreachable | Inbound delayed; processed when delivered. Media download and sends retried with backoff | Mocked only: `test_transient_download_failure_retries_later_without_acknowledging`, `test_transient_send_failure_is_retried_without_touching_review` |
-| AI unavailable | Documents stay `PENDING_AI` ("IA indisponible" shown); processed when it returns | `test_queue_waits_while_ai_unavailable_and_survives_restart`, UI toggle |
+| AI unavailable | Documents stay `PENDING_AI`; processed when it returns | `test_queue_waits_while_ai_unavailable_and_survives_restart`, UI toggle |
 | Backend restart | Queue and drafts intact | Same test |
-| Crash during extraction | Document stays `PENDING_AI`, retried on the next tick | Code only (`process_document`); no test |
+| Crash during extraction | Document stays `PENDING_AI`, retried on the next tick | Live check with local OCR (2026-10-04, `docs/ocr-evaluation.md#checks-performed`): server killed mid-page, document read again after restart, orphaned OCR process exited on its own; no automated test |
+| OCR page hangs or the engine crashes | Page marked unread after `DAYONE_OCR_TIMEOUT_SECONDS`, OCR process killed and restarted for the next page; a document with no readable page fails (`OCR_TIMEOUT` / `OCR_FAILED`) | `test_a_page_over_the_timeout_is_stopped_and_the_next_page_is_read` (real OCR, opt-in), `test_process_that_dies_is_replaced`, `test_ocr_crash_goes_to_manual_entry_without_logging_page_text`; live check with a 5 s timeout |
 | Duplicate webhook | One page, no second acknowledgment | `test_webhook_replay_is_ignored` |
 | Duplicate replacement webhook | Same replacement page returned, no new page or message | `test_duplicate_replacement_webhook_is_ignored` |
 | Replacement arrives during extraction | Old result discarded, document re-extracted with the new page | `test_extraction_started_before_replacement_is_discarded` |
@@ -473,9 +475,11 @@ Written for the Cloud API adapter (Aymane's area) but they touch Ariyan's storag
 
 ## Evaluation prep (Fatma leads, all contribute)
 
-- [ ] Hold-out image set with verified ground truth (10+ pages).
-- [ ] Table: field accuracy, status correctness, confidence calibration, false `KNOWN` rate.
-- [ ] Extraction limitations in the README (Arabic handwriting, checkboxes, etc.).
+- [x] Hold-out image set with checked ground truth: specimen patients 6–10 (40 pages, plus two simulated photo conditions), `eval/specimen-ground-truth.json`. Caveats: synthetic only, its clean pages were seen while tuning, the check was not done by a person.
+- [x] Table: field accuracy, status correctness, false `KNOWN` rate, visits, patient keys, time and failures, by field and layout (`docs/ocr-evaluation.md`).
+- [ ] Confidence calibration: not claimed; needs far more (and real) data.
+- [ ] Real phone photos of filled specimen pages (with consent and synthetic content only).
+- [x] Extraction limitations in the README (local OCR section and open limitations). Arabic handwriting was not tested.
 
 ---
 

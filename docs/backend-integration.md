@@ -67,7 +67,7 @@ Use the unchanged external claim/media/result/failure APIs for a separate worker
 The authenticated bridge and the public signature-verifying webhook remain
 separate listeners; the bridge alias does not parse Meta envelopes.
 
-## Verification
+## Part 1 Verification (Pre-OCR Baseline)
 
 Run with `.venv/Scripts/python.exe -m unittest discover -s tests -q`.
 110 tests ran: 109 passed, one live Atlas test skipped. The suite covers fixture
@@ -83,20 +83,28 @@ WhatsApp message sent, Meta configuration changed, or deployment performed.
 Node and GitHub CLI are unavailable: no JavaScript runtime/browser test or
 remote PR creation is claimed. The PR title/body are prepared locally.
 
-## Remaining work and limits
+## Merged OCR & Backend Part 3 Capabilities
 
-- Aymane's unpublished local OCR must be brought in and wired to the media
-  interface. Accuracy, multiple visits, renamed images, layout detection and
-  timeouts remain OCR work; unknown layouts must fail visibly into review.
-- Published transport workers select pending rows without atomic claims. Before
-  multiple transport workers run, add owned inbound/outbound leases and define
-  recovery for uncertain send outcomes. No exactly-once Meta delivery guarantee
-  is claimed. Live outbound remains disabled during this handoff.
-- Actual phone intake, real delivery and real retake reply context remain
-  unverified. Existing WABA subscription/publishing blockers are unchanged.
-- Atlas still hydrates all data per transaction and serializes writes globally.
-  Shared credentials, no facility RBAC, no automatic SQLite migration/retention,
-  and plain SQLite demo records remain limitations.
-- Pregnancy entities and the 31-column Excel export require the agreed identity,
-  aggregation and missing-value decisions; source assets remain read-only.
-- Organizer approval of back-office verification is still pending.
+- **PaddleOCR Integration:** Configured `--extractor paddle` (primary) alongside `tesseract` and `fixture`. Model paths automatically detect `var/ocr-models` from parent repository or configured environment. OCR processes run isolated with bounded execution (page and document timeouts) using the `extraction_media(page_refs)` context manager, ensuring temporary files are pruned cleanly on success or failure without exposing unencrypted media.
+- **Mandatory Revision Guarding:** Revisions are strictly verified across all state-mutating actions including `set_page_section`, manual entry transitions, field corrections, and visit confirmation. Stale leases and concurrent edits are rejected with explicit conflict codes.
+- **Durable Offline Queue & SYNCED Lifecycle:** `dayone/offline.py` provides an explicit `item_status` table tracking `PENDING`, `SYNCED`, and `FAILED` states with recovery mechanisms for queue retries. `service.sync_document(document_id)` safely transitions registered documents to `SYNCED` with simulated central registry sink and idempotent replay.
+- **Conversational Midwife Review Actions:** `service.conversational_prompt()` and `service.conversational_reply()` support step-by-step midwife conversational interactions (Confirm, Correct, Set Status, Retake, Manual Entry, Patient Choice, and Sync). Selective questions target uncertain/illegible fields, followed by explicit record confirmation.
+- **Deterministic 31-Column Export:** `dayone/export_columns.py` and `service.export_patient()`, `service.export_all_patients()`, and `service.export_csv()` implement deterministic mapping to the 31 columns of `maternal_registry_synthetic.csv`. Aggregations (mean systolic/diastolic blood pressure, delivery type 0/1, newborn sex 0/1) are computed deterministically, while unmeasured or missing fields remain visibly `None` without data fabrication.
+
+## Verification
+
+Run with `.venv/Scripts/python.exe -m unittest discover -s tests -v`.
+- **266 tests ran:** 263 passed, 3 skipped (1 live Atlas test, 2 opt-in real OCR tests).
+- Opt-in real OCR test suite (`DAYONE_REAL_OCR=1`): 2 passed with PaddleOCR reading specimen visit grids and verifying timeouts/process isolation.
+- Node syntax check: `node -c dayone/static/app.js` passed cleanly.
+- Merge-marker check: `git diff --check` passed with 0 conflicts.
+- All 132 manifest-listed assets match recorded SHA-256 hashes.
+
+No local `.env` was loaded, working database opened, live Atlas invoked, real WhatsApp message sent, Meta configuration changed, or remote deployment performed.
+
+## Remaining work and declared limits
+
+- **Midwife Conversational Interface:** The backend conversational action handlers are complete and tested; a standalone midwife mobile chat frontend remains a simulated capability in the prototype UI.
+- **WhatsApp Cloud API Sandbox:** Outbound holds remain strictly active; live delivery against Meta's sandbox requires an approved/published Meta app with WABA subscription.
+- **OCR Real-World Calibration:** PaddleOCR has been validated on synthetic specimen renders and simulated scans (8 wrong KNOWN of 979 values); testing against real-world smartphone photos in varied clinic lighting remains open for future field pilots.
+- **Atlas Scaling:** Atlas hydrates documents per transaction; full RBAC and multi-facility role partitioning remain recommended future enhancements.

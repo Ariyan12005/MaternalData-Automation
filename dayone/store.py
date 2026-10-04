@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS pages (
     media_sha256 TEXT NOT NULL,
     position INTEGER NOT NULL,
     received_at TEXT NOT NULL,
-    replaced_by TEXT
+    replaced_by TEXT,
+    section_hint TEXT
 );
 CREATE TABLE IF NOT EXISTS retake_requests (
     request_id TEXT PRIMARY KEY,
@@ -183,6 +184,8 @@ class Store:
         columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(pages)")}
         if columns and "replaced_by" not in columns:
             self._conn.execute("ALTER TABLE pages ADD COLUMN replaced_by TEXT")
+        if columns and "section_hint" not in columns:
+            self._conn.execute("ALTER TABLE pages ADD COLUMN section_hint TEXT")
         columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(senders)")}
         if columns and "channel" not in columns:
             self._conn.execute("ALTER TABLE senders ADD COLUMN channel TEXT NOT NULL DEFAULT 'SIMULATOR'")

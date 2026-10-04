@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 
@@ -28,6 +29,16 @@ SLOTS = {
     "M9": "9e mois",
     "MANUAL": "Saisie manuelle",
 }
+# Page sections a reviewer can choose when the extractor cannot tell (pages[].section). Only "cover" and
+# "current_pregnancy" carry schema fields; the others are booklet pages that are photographed but not read.
+PAGE_SECTIONS = {
+    "cover": "Couverture (n° de fiche, établissement)",
+    "identification": "Identification et antécédents",
+    "current_pregnancy": "Grossesse actuelle (tableau des visites)",
+    "delivery": "Accouchement",
+    "postpartum": "Post-partum",
+    "newborn": "Nouveau-né",
+}
 
 FIELD_VALUE_KEYS = {
     "raw_text", "value", "unit", "confidence", "field_status",
@@ -37,6 +48,8 @@ DRAFT_KEYS = {
     "schema_version", "layout_id", "notes", "extraction", "pages",
     "pii_detected", "document_fields", "encounters",
 }
+# Optional v1.0-compatible key: paper values beyond the 12 fields, grouped by scope (dayone/extended.py).
+OPTIONAL_DRAFT_KEYS = {"extended"}
 
 
 class InvalidValue(ValueError):
@@ -52,13 +65,16 @@ _ENUM_SYNONYMS = {
 @dataclass(frozen=True)
 class FieldSpec:
     name: str
-    scope: str  # "document" or "encounter"
-    kind: str  # digits, code, text, date, gestational_age, decimal, int, bp, enum
+    scope: str  # "document" or "encounter"; extended fields: patient, pregnancy, visit, delivery, newborn, ...
+    kind: str  # digits, code, text, date, gestational_age, decimal, int, bp, enum, choice
     label: str
     unit: str | None = None
     minimum: float | None = None
     maximum: float | None = None
     required: bool = False
+    # choice: (stored value, accepted spellings) pairs, e.g. ("FEMALE", ("f", "feminin")).
+    choices: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    decimals: int = 1
 
     def parse(self, raw: object) -> object:
         """Normalize reviewer input (e.g. '19/12/25', '28SA+1j', '12') into the stored value."""
@@ -99,6 +115,9 @@ class FieldSpec:
             return None if ok else "nombre attendu"
         if kind == "enum":
             return None if value in _ENUM_SYNONYMS else "négatif ou positif attendu"
+        if kind == "choice":
+            allowed = [choice for choice, _spellings in self.choices]
+            return None if value in allowed else f"une des valeurs {', '.join(allowed)} attendue"
         return f"type inconnu {kind}"
 
     def range_error(self, value: object) -> str | None:
@@ -144,11 +163,18 @@ def _parse_date(spec: FieldSpec, text: str) -> str:
     return candidate
 
 
+# How a unit is written on the forms, when it differs from the stored unit name.
+UNIT_SPELLINGS = {"years": ("ans", "an"), "g": ("gr",)}
+
+
 def _number(text: str, unit: str | None) -> float:
-    cleaned = text.lower().replace(",", ".")
+    cleaned = text.lower().replace(",", ".").strip()
     if unit:
-        cleaned = cleaned.replace(unit.lower(), "")
-    cleaned = cleaned.strip()
+        for spelling in sorted((unit.lower(), *UNIT_SPELLINGS.get(unit, ())), key=len, reverse=True):
+            stripped = re.sub(rf"\s*{re.escape(spelling)}\.?$", "", cleaned)
+            if stripped != cleaned:
+                cleaned = stripped.strip()
+                break
     if not re.fullmatch(r"\d+(\.\d+)?", cleaned):
         raise InvalidValue("Nombre attendu.")
     return float(cleaned)
@@ -156,7 +182,7 @@ def _number(text: str, unit: str | None) -> float:
 
 def _parse_decimal(spec: FieldSpec, text: str) -> float | int:
     number = _number(text, spec.unit)
-    return int(number) if number.is_integer() else round(number, 1)
+    return int(number) if number.is_integer() else round(number, spec.decimals)
 
 
 def _parse_int(spec: FieldSpec, text: str) -> int:
@@ -167,16 +193,39 @@ def _parse_int(spec: FieldSpec, text: str) -> int:
 
 
 def _parse_bp(spec: FieldSpec, text: str) -> int:
-    value = _parse_int(spec, text)
-    # Moroccan fiches record TA in cmHg ("12/7"): 12 means 120 mmHg.
-    return value * 10 if value < 30 else value
+    number = _number(text, spec.unit)
+    # Moroccan fiches record TA in cmHg ("12/7", "12/7,5"): 12 means 120 mmHg, 7,5 means 75.
+    if number < 30:
+        number *= 10
+    if not round(number, 6).is_integer():
+        raise InvalidValue("Nombre entier attendu (mmHg) ou une décimale en cmHg.")
+    return int(round(number))
+
+
+# Weeks of amenorrhoea plus days: "28SA+1j", "28 SA 3 j", "28s3j", "28 SA et 3 jours", "28+3", "28". Days need a
+# separator, a weeks unit or a "j", so that "283" or "28 3" (28+3 or a lost decimal?) is refused rather than guessed.
+GESTATIONAL_AGE = (r"(?P<weeks>\d{1,2})\s*(?P<unit>s\.?\s*a\.?|sem(?:aines?)?|s)?\s*"
+                   r"(?:(?P<sep>\+|et\b)?\s*(?P<days>\d{1,2})\s*(?P<j>j(?:ours?)?\.?)?)?")
+
+
+def gestational_age_parts(text: str) -> tuple[int, int] | None:
+    """(weeks, days) of a written gestational age, or None when the text is not one unambiguous age."""
+    match = re.fullmatch(GESTATIONAL_AGE, text.strip().lower())
+    if not match:
+        return None
+    days = match.group("days")
+    if days is not None and not (match.group("unit") or match.group("sep") or match.group("j")):
+        return None
+    return int(match.group("weeks")), int(days or 0)
 
 
 def _parse_gestational_age(spec: FieldSpec, text: str) -> int:
-    match = re.fullmatch(r"(\d{1,2})\s*(?:sa)?\s*(?:\+\s*(\d)\s*j?)?", text.lower())
-    if not match:
-        raise InvalidValue("Format attendu : 28SA+1j, 28+1 ou 28 (semaines).")
-    weeks, days = int(match.group(1)), int(match.group(2) or 0)
+    if re.fullmatch(r"\s*\d{1,2}[.,]\d+\s*(?:sa)?\s*", text.lower()):
+        raise InvalidValue("Écrivez semaines et jours (ex. 28SA+3j) : une décimale est ambiguë.")
+    parts = gestational_age_parts(text)
+    if parts is None:
+        raise InvalidValue("Format attendu : 28SA+1j, 28 SA 1 j, 28+1 ou 28 (semaines).")
+    weeks, days = parts
     if days > 6:
         raise InvalidValue("Les jours doivent être entre 0 et 6.")
     return weeks * 7 + days
@@ -190,6 +239,20 @@ def _parse_enum(spec: FieldSpec, text: str) -> str:
     raise InvalidValue("Réponse attendue : négatif ou positif.")
 
 
+def plain(text: str) -> str:
+    """Lowercase, without accents, punctuation or repeated spaces: how choice spellings are compared."""
+    folded = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"\s+", " ", re.sub(r"[^\w<>+-]+", " ", folded)).strip()
+
+
+def _parse_choice(spec: FieldSpec, text: str) -> str:
+    wanted = plain(text)
+    for value, spellings in spec.choices:
+        if wanted in (plain(value), *(plain(s) for s in spellings)):
+            return value
+    raise InvalidValue("Réponse attendue : " + ", ".join(spellings[0] for _value, spellings in spec.choices) + ".")
+
+
 _PARSERS = {
     "digits": _parse_digits,
     "code": _parse_code,
@@ -200,6 +263,7 @@ _PARSERS = {
     "bp": _parse_bp,
     "gestational_age": _parse_gestational_age,
     "enum": _parse_enum,
+    "choice": _parse_choice,
 }
 
 DOCUMENT_FIELDS = (
@@ -224,7 +288,10 @@ KEY_FIELDS = ("registry_file_number", "midwife_patient_code")
 
 def catalog() -> dict:
     """Field metadata for clients (labels, units, kinds)."""
+    from . import extended
+
     return {
+        "extended": extended.catalog(),
         "fields": {
             spec.name: {
                 "scope": spec.scope, "kind": spec.kind, "label": spec.label,
@@ -236,6 +303,7 @@ def catalog() -> dict:
         "encounter_fields": [spec.name for spec in ENCOUNTER_FIELDS],
         "slots": SLOTS,
         "key_fields": list(KEY_FIELDS),
+        "page_sections": PAGE_SECTIONS,
     }
 
 
@@ -257,8 +325,17 @@ def get_field(draft: dict, scope: str, name: str, encounter_index: int | None) -
 
 
 def blocking_fields(draft: dict) -> list[dict]:
-    """Fields that must be resolved by a reviewer before registration."""
-    blocking = []
+    """Pages and fields that must be resolved by a reviewer before registration.
+
+    A page item ({"scope": "page", "page_index", "page_ref", "field": None}) comes from pages[].review_reason:
+    an unknown or uncertain section, or a page that could not be read. It is listed first, because settling it
+    re-extracts the document.
+    """
+    blocking = [
+        {"scope": "page", "page_index": i, "page_ref": page["page_ref"], "encounter_index": None, "slot": None,
+         "field": None, "reason": page["review_reason"]}
+        for i, page in enumerate(draft["pages"]) if page.get("review_reason")
+    ]
     for scope, index, slot, name, fv in iter_fields(draft):
         reason = None
         if FIELDS[name].required and fv["value"] is None:
@@ -316,8 +393,12 @@ def validate_draft(draft: object) -> list[str]:
 
     if not isinstance(draft, dict):
         return ["$: object expected"]
-    for key in sorted(set(draft) - DRAFT_KEYS):
+    for key in sorted(set(draft) - DRAFT_KEYS - OPTIONAL_DRAFT_KEYS):
         err(key, "unknown key")
+    if "extended" in draft:
+        from . import extended
+
+        extended.validate(draft["extended"], err)
     if draft.get("schema_version") != SCHEMA_VERSION:
         err("schema_version", f"expected {SCHEMA_VERSION}")
     if draft.get("layout_id") != LAYOUT_ID:
@@ -413,6 +494,8 @@ def _validate_field(path: str, spec: FieldSpec, fv: object, err) -> None:
         err(path, "validation_flags must be a list of strings")
     if fv["source"] is not None and not (isinstance(fv["source"], dict) and "page_ref" in fv["source"]):
         err(path, "source must be null or an object with page_ref")
+    elif fv["source"] is not None:
+        _validate_source(f"{path}.source", fv["source"], err)
     verification = fv["verification"]
     if not isinstance(verification, dict) or verification.get("state") not in VERIFICATION_STATES:
         err(path, f"verification.state must be one of {VERIFICATION_STATES}")
@@ -435,3 +518,22 @@ def _validate_field(path: str, spec: FieldSpec, fv: object, err) -> None:
         and confidence is not None and confidence < KNOWN_CONFIDENCE_THRESHOLD
     ):
         err(path, f"confidence below {KNOWN_CONFIDENCE_THRESHOLD} must be NEEDS_REVIEW")
+    if "CONFLICT_ACROSS_PAGES" in fv["validation_flags"] and status == "KNOWN" and verification["state"] == "UNVERIFIED":
+        err(path, "a conflict across pages cannot be KNOWN before review")
+
+
+def _validate_source(path: str, source: dict, err) -> None:
+    """Optional source keys: readings (one per page that showed the field) and normalization (unit conversion)."""
+    readings = source.get("readings")
+    if readings is not None:
+        if not isinstance(readings, list) or len(readings) < 2:
+            err(f"{path}.readings", "list of at least two page readings expected")
+        else:
+            for i, reading in enumerate(readings):
+                if not (isinstance(reading, dict) and isinstance(reading.get("page_ref"), str)
+                        and reading.get("field_status") in FIELD_STATUSES):
+                    err(f"{path}.readings[{i}]", "object with page_ref and field_status expected")
+    normalization = source.get("normalization")
+    if normalization is not None and not (isinstance(normalization, dict) and isinstance(normalization.get("from"), str)
+                                          and isinstance(normalization.get("to"), str)):
+        err(f"{path}.normalization", "object with from and to expected")

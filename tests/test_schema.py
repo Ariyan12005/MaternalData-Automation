@@ -41,6 +41,34 @@ class FixtureContractTest(unittest.TestCase):
         draft["encounters"][0]["fields"]["weight_kg"]["value"] = 60
         self.assertTrue(schema.validate_draft(draft))
 
+    def test_page_readings_and_unit_normalization_are_optional_and_checked(self):
+        draft = load("sample_extraction.json")
+        fields = draft["encounters"][0]["fields"]
+        page = fields["weight_kg"]["source"]["page_ref"]
+        reading = {"page_ref": page, "raw_text": "62kg", "value": 62, "field_status": "KNOWN", "confidence": 0.84,
+                   "validation_flags": []}
+        fields["weight_kg"]["source"]["readings"] = [reading, dict(reading, page_ref="whatsapp-media/b.jpg")]
+        fields["systolic_bp_mmhg"]["source"]["normalization"] = {"from": "cmHg", "to": "mmHg", "factor": 10}
+        self.assertEqual(schema.validate_draft(draft), [])
+
+        fields["weight_kg"]["source"]["readings"] = [reading]
+        fields["systolic_bp_mmhg"]["source"]["normalization"] = "cmHg"
+        errors = schema.validate_draft(draft)
+        self.assertTrue(any("readings" in e for e in errors) and any("normalization" in e for e in errors), errors)
+
+    def test_conflict_across_pages_cannot_be_known_before_review(self):
+        draft = load("sample_extraction.json")
+        draft["encounters"][0]["fields"]["weight_kg"]["validation_flags"] = ["CONFLICT_ACROSS_PAGES"]
+        self.assertTrue(any("conflict" in e for e in schema.validate_draft(draft)))
+        draft["encounters"][0]["fields"]["weight_kg"]["verification"] = {"state": "CORRECTED", "by": "agent", "at": "x"}
+        self.assertEqual(schema.validate_draft(draft), [])
+
+    def test_draft_without_antenatal_visit_is_valid(self):
+        draft = load("success_extraction.json")
+        draft["encounters"] = []
+        self.assertEqual(schema.validate_draft(draft), [])
+        self.assertTrue(all(b["scope"] == "document" for b in schema.blocking_fields(draft)))
+
 
 class ParsingTest(unittest.TestCase):
     def test_reviewer_inputs_are_normalized(self):
@@ -49,8 +77,12 @@ class ParsingTest(unittest.TestCase):
             ("visit_date", "2025-12-19", "2025-12-19"),
             ("gestational_age_days", "28SA+1j", 197),
             ("gestational_age_days", "35", 245),
+            ("gestational_age_days", "28 SA 3 j", 199),
+            ("gestational_age_days", "28 SA et 3 jours", 199),
+            ("gestational_age_days", "28 sem + 3", 199),
             ("systolic_bp_mmhg", "12", 120),
             ("systolic_bp_mmhg", "125", 125),
+            ("diastolic_bp_mmhg", "7,5", 75),
             ("weight_kg", "63,5 kg", 63.5),
             ("syphilis_test", "nég", "NEGATIVE"),
             ("midwife_patient_code", "CM: 164125", "164125"),
@@ -66,6 +98,10 @@ class ParsingTest(unittest.TestCase):
             ("visit_date", "hier"),
             ("fundal_height_cm", "80"),
             ("gestational_age_days", "28+9"),
+            ("gestational_age_days", "28,5"),  # decimal weeks or 28+5: never guessed
+            ("gestational_age_days", "283"),
+            ("gestational_age_days", "28 3"),
+            ("systolic_bp_mmhg", "120,5"),
             ("hiv_test", "peut-être"),
         ]
         for field, raw in cases:

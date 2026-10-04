@@ -47,7 +47,7 @@ Decision: **no companion app**. The midwife's phone runs WhatsApp only.
 | Webhook delivered twice | `source_message_id` unique → same page returned, no second acknowledgment | — | Yes |
 | Confirm retried | Already `REGISTERED` → stored result returned, no new visit | — | Yes |
 
-**What the demo proves:** acknowledgment only after persistence; AI outage ("IA disponible" toggle) leaves documents queued and nothing is lost; queue and drafts survive a server restart (`tests/test_flow.py`); webhook replay and confirm retry never duplicate pages or visits.
+**What the demo proves:** acknowledgment only after persistence; AI outage ("Extraction disponible (simulé)" toggle) leaves documents queued and nothing is lost; queue and drafts survive a server restart (`tests/test_flow.py`); webhook replay and confirm retry never duplicate pages or visits.
 
 **What it does not prove (gaps against `consignes-fr-en.pdf`):**
 
