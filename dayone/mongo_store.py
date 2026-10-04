@@ -35,6 +35,14 @@ class MongoStore:
         conn.executescript(SCHEMA_SQL)
         before = {}
         try:
+            # Hydration restores state, not domain actions. In particular, an
+            # outbound-message trigger must not enqueue receipts a second time.
+            triggers = list(conn.execute(
+                "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql IS NOT NULL"
+            ))
+            for trigger in triggers:
+                name = trigger["name"].replace('"', '""')
+                conn.execute(f'DROP TRIGGER "{name}"')
             for table in reversed(TABLES):
                 rows = {}
                 for item in self.db[table].find({}, session=session):
@@ -43,6 +51,8 @@ class MongoStore:
                     conn.execute(f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", tuple(row.values()))
                     rows[item["_id"]] = row
                 before[table] = rows
+            for trigger in triggers:
+                conn.execute(trigger["sql"])
             conn.execute("PRAGMA foreign_keys=ON")
             return conn, before
         except BaseException:

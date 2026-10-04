@@ -24,6 +24,12 @@ def read_config(path=None):
 
 
 def load_config(path=None):
+    sources = {}
     for name, value in read_config(path).items():
         if value:
+            sources[name] = "environment" if name in os.environ else ".env"
             os.environ.setdefault(name, value)
+    for name in os.environ:
+        if name.startswith("DAYONE_"):
+            sources.setdefault(name, "environment")
+    return sources

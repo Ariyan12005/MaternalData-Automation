@@ -12,7 +12,9 @@ class ConfigTest(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text('# comment\nDAYONE_MONGODB_URI="mongodb+srv://user:pa#ss@host/"\nDAYONE_STORAGE=mongodb\nDAYONE_API_TOKEN=\nOTHER=ignored\n', encoding="utf-8")
             with patch.dict(os.environ, {"DAYONE_STORAGE": "sqlite"}, clear=True):
-                load_config(path)
+                sources = load_config(path)
+                self.assertEqual(sources["DAYONE_STORAGE"], "environment")
+                self.assertEqual(sources["DAYONE_MONGODB_URI"], ".env")
                 self.assertEqual(os.environ["DAYONE_STORAGE"], "sqlite")
                 self.assertEqual(os.environ["DAYONE_MONGODB_URI"], "mongodb+srv://user:pa#ss@host/")
                 self.assertNotIn("DAYONE_API_TOKEN", os.environ)

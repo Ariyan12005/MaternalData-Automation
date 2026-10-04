@@ -139,6 +139,32 @@ still outside our control and its device-side encryption is not demonstrated.
 
 ## Verification
 
+### Aymane PR integration safeguards
+
+Atlas hydration temporarily disables SQL triggers while restoring encrypted rows,
+then reinstalls them before domain operations. Restoring a stored outbound message
+must not recreate a pending receipt or overwrite an existing delivery state.
+Additive columns with SQL defaults can read older encrypted records without
+rewriting them during reads; subsequent writes persist the expanded rows using
+the existing encryption key. No database reset or key rotation is required.
+
+The WhatsApp transport, retake tables and persistent outbound hold from Aymane's
+branch are not merged into this branch. Before integrating them, add atomic
+inbound/outbound job claims with lease ownership, guard each outbound claim with
+the persistent hold, disable cloud demo reset, and prevent delayed failure
+callbacks from retrying delivered/read messages. A send with an uncertain network
+outcome needs an explicit recovery policy; leases alone cannot guarantee that
+Meta accepted a message only once. Retake replacement must invalidate the current
+document revision and extraction lease while preserving original encrypted media.
+Keep this branch's Atlas factory, authenticated encrypted media endpoints and
+external claim/result/failure contract instead of replacing them with the PR's
+SQLite/fixture factory or plaintext download directory.
+
+Pregnancy-level entities and anonymized Excel export remain Ariyan's backend
+scope; neither is implemented by the WhatsApp integration. Fatma owns extraction
+and Aymane owns transport/review. Agree pregnancy identity, row granularity and
+unknown-value encoding before implementing the proposed Excel field map.
+
 On Windows PowerShell (venv activated):
 
 ```powershell

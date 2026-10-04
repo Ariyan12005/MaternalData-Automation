@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 from cryptography.fernet import Fernet
 from dayone.mongo_store import MongoStore
@@ -140,6 +141,45 @@ class MongoAdapterTest(unittest.TestCase):
         status, body = Api(self.service).dispatch("POST", "/api/demo/reset", {}, {}, "agent.test")
         self.assertEqual(status, 409)
         self.assertEqual(body["error"]["code"], "RESET_DISABLED")
+
+    def test_hydration_does_not_replay_outbound_triggers(self):
+        from dayone.store import SCHEMA_SQL
+        schema_with_trigger = SCHEMA_SQL + """
+        CREATE TRIGGER queue_receipt AFTER INSERT ON messages
+        WHEN NEW.direction = 'OUT'
+        BEGIN
+            INSERT INTO settings(key, value) VALUES ('receipt:' || NEW.id, 'PENDING');
+        END;
+        """
+        with patch("dayone.mongo_store.SCHEMA_SQL", schema_with_trigger):
+            with self.store.tx() as db:
+                db.execute("INSERT INTO messages(sender_id,direction,created_at) VALUES ('private-sender','OUT','now')")
+                db.execute("UPDATE settings SET value='SENT' WHERE key='receipt:1'")
+            # Restoring the message must neither duplicate nor reset its job.
+            with self.store.read() as db:
+                self.assertEqual(db.execute("SELECT value FROM settings WHERE key='receipt:1'").fetchone()[0], "SENT")
+            # Triggers are enabled again for new domain writes after hydration.
+            with self.store.tx() as db:
+                db.execute("INSERT INTO messages(sender_id,direction,created_at) VALUES ('private-sender','OUT','later')")
+            with self.store.read() as db:
+                self.assertEqual(db.execute("SELECT value FROM settings WHERE key='receipt:2'").fetchone()[0], "PENDING")
+
+    def test_additive_schema_columns_preserve_encrypted_records(self):
+        from dayone.store import SCHEMA_SQL
+        migrated_schema = SCHEMA_SQL.replace(
+            "label TEXT NOT NULL", "label TEXT NOT NULL, channel TEXT NOT NULL DEFAULT 'SIMULATOR'"
+        )
+        encrypted_before = copy.deepcopy(self.client.database["senders"].items)
+        with patch("dayone.mongo_store.SCHEMA_SQL", migrated_schema):
+            with self.store.read() as db:
+                row = db.execute("SELECT * FROM senders WHERE sender_id='private-sender'").fetchone()
+                self.assertEqual(row["channel"], "SIMULATOR")
+                self.assertEqual(row["facility_id"], "FAC")
+            self.assertEqual(self.client.database["senders"].items, encrypted_before)
+            with self.store.tx():
+                pass
+            with self.store.read() as db:
+                self.assertEqual(db.execute("SELECT channel FROM senders").fetchone()[0], "SIMULATOR")
 
     def test_selected_field_update_and_stale_visit_on_mongo(self):
         media = MongoMediaStore(self.store.db, self.store.cipher)
