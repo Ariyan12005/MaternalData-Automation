@@ -1,0 +1,840 @@
+{
+ "_note": "Transcribed by eye (Claude, 2026-10-04) from the specimen images and NOT yet verified by a person. Every gestational age was checked against DDR and visit date (within 7 days). null means the cell is blank or holds a dash, so any KNOWN value for it counts as wrong. Values use the draft's normalized form (digits-only registry number, ISO dates, gestational age in days). Specimen pages carry no midwife patient code. This file must never be imported by dayone/.",
+ "cases": [
+  {
+   "id": "patient-01",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-02.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-04.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-05.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-06.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-07__1O_M-H0E7z.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-08.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026823001",
+     "midwife_patient_code": null,
+     "facility_name": "CSCA Al Wifaq",
+     "last_menstrual_period": "2025-04-26"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V2",
+      "visit_date": "2025-07-20",
+      "gestational_age_days": 84,
+      "weight_kg": 58.8,
+      "systolic_bp_mmhg": 104,
+      "diastolic_bp_mmhg": 74,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2025-09-28",
+      "gestational_age_days": 154,
+      "weight_kg": 62.7,
+      "systolic_bp_mmhg": 106,
+      "diastolic_bp_mmhg": 77,
+      "fundal_height_cm": 18,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2025-11-01",
+      "gestational_age_days": 189,
+      "weight_kg": 64.3,
+      "systolic_bp_mmhg": 102,
+      "diastolic_bp_mmhg": 60,
+      "fundal_height_cm": 23,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2025-12-01",
+      "gestational_age_days": 217,
+      "weight_kg": 64.8,
+      "systolic_bp_mmhg": 103,
+      "diastolic_bp_mmhg": 66,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M8",
+      "visit_date": "2025-12-29",
+      "gestational_age_days": 245,
+      "weight_kg": 66.2,
+      "systolic_bp_mmhg": 115,
+      "diastolic_bp_mmhg": 63,
+      "fundal_height_cm": 31,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M9",
+      "visit_date": "2026-01-18",
+      "gestational_age_days": 266,
+      "weight_kg": 66.8,
+      "systolic_bp_mmhg": 110,
+      "diastolic_bp_mmhg": 60,
+      "fundal_height_cm": 34,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-02",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-09.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-10__1U_S1pqftP.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-11.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-12__1D4u3zWyes.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-13.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-14__1NRsJ9Ddo8.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-15__1NMe1Ym5MK.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-16__1CB60L7TiS.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026416002",
+     "midwife_patient_code": null,
+     "facility_name": "CSC Hay Salam",
+     "last_menstrual_period": "2025-08-11"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V1",
+      "visit_date": "2025-10-05",
+      "gestational_age_days": 56,
+      "weight_kg": 71.0,
+      "systolic_bp_mmhg": 151,
+      "diastolic_bp_mmhg": 97,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T1_V2",
+      "visit_date": "2025-11-04",
+      "gestational_age_days": 84,
+      "weight_kg": 73.3,
+      "systolic_bp_mmhg": 139,
+      "diastolic_bp_mmhg": 89,
+      "fundal_height_cm": null,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V1",
+      "visit_date": "2025-12-23",
+      "gestational_age_days": 133,
+      "weight_kg": 75.2,
+      "systolic_bp_mmhg": 137,
+      "diastolic_bp_mmhg": 92,
+      "fundal_height_cm": 15,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2026-01-28",
+      "gestational_age_days": 168,
+      "weight_kg": 77.8,
+      "systolic_bp_mmhg": 141,
+      "diastolic_bp_mmhg": 88,
+      "fundal_height_cm": 20,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2026-02-22",
+      "gestational_age_days": 196,
+      "weight_kg": 79.1,
+      "systolic_bp_mmhg": 152,
+      "diastolic_bp_mmhg": 95,
+      "fundal_height_cm": 24,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2026-03-14",
+      "gestational_age_days": 217,
+      "weight_kg": 79.1,
+      "systolic_bp_mmhg": 146,
+      "diastolic_bp_mmhg": 96,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M8",
+      "visit_date": "2026-04-13",
+      "gestational_age_days": 245,
+      "weight_kg": 80.6,
+      "systolic_bp_mmhg": 150,
+      "diastolic_bp_mmhg": 88,
+      "fundal_height_cm": 31,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-03",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-17__1JAXyAcTm1.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-18__1YDapV3RjJ.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-19__1CnJAvJyYe.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-20__18kYVBTwE4.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-21__1YGNHKDIuK.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-22.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-23__1M0bYiZmc7.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-24__11w0IP6pSn.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026711003",
+     "midwife_patient_code": null,
+     "facility_name": "DR Tahannaout Sud",
+     "last_menstrual_period": "2025-04-07"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V1",
+      "visit_date": "2025-06-05",
+      "gestational_age_days": 56,
+      "weight_kg": 51.6,
+      "systolic_bp_mmhg": 104,
+      "diastolic_bp_mmhg": 78,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T2_V1",
+      "visit_date": "2025-08-06",
+      "gestational_age_days": 119,
+      "weight_kg": 55.6,
+      "systolic_bp_mmhg": 118,
+      "diastolic_bp_mmhg": 74,
+      "fundal_height_cm": 13,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2025-09-06",
+      "gestational_age_days": 154,
+      "weight_kg": 56.5,
+      "systolic_bp_mmhg": 120,
+      "diastolic_bp_mmhg": 62,
+      "fundal_height_cm": 18,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2025-10-11",
+      "gestational_age_days": 189,
+      "weight_kg": 59.2,
+      "systolic_bp_mmhg": 115,
+      "diastolic_bp_mmhg": 62,
+      "fundal_height_cm": 23,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M8",
+      "visit_date": "2025-12-09",
+      "gestational_age_days": 245,
+      "weight_kg": 62.1,
+      "systolic_bp_mmhg": 101,
+      "diastolic_bp_mmhg": 75,
+      "fundal_height_cm": 31,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M9",
+      "visit_date": "2025-12-27",
+      "gestational_age_days": 266,
+      "weight_kg": 63.2,
+      "systolic_bp_mmhg": 118,
+      "diastolic_bp_mmhg": 62,
+      "fundal_height_cm": 34,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-04",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-25__1-CjNUosOk.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-26__17ANHGh7D9.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-27__1IYSy5g-zc.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-28__1OtF9rNsnr.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-29__1IIeCj5Sjq.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-30__1MEUrnbu5W.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-31__1Nue3NqAua.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-32__1Bx-67ocGy.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026995004",
+     "midwife_patient_code": null,
+     "facility_name": "CSCA Ait Mhamed",
+     "last_menstrual_period": "2025-09-21"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V1",
+      "visit_date": "2025-12-10",
+      "gestational_age_days": 77,
+      "weight_kg": 70.7,
+      "systolic_bp_mmhg": 101,
+      "diastolic_bp_mmhg": 67,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T2_V1",
+      "visit_date": "2026-01-13",
+      "gestational_age_days": 112,
+      "weight_kg": 72.3,
+      "systolic_bp_mmhg": 107,
+      "diastolic_bp_mmhg": 72,
+      "fundal_height_cm": 12,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2026-03-01",
+      "gestational_age_days": 161,
+      "weight_kg": 74.6,
+      "systolic_bp_mmhg": 112,
+      "diastolic_bp_mmhg": 73,
+      "fundal_height_cm": 19,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2026-03-28",
+      "gestational_age_days": 189,
+      "weight_kg": 76.0,
+      "systolic_bp_mmhg": 104,
+      "diastolic_bp_mmhg": 64,
+      "fundal_height_cm": 23,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2026-04-26",
+      "gestational_age_days": 217,
+      "weight_kg": 78.1,
+      "systolic_bp_mmhg": 114,
+      "diastolic_bp_mmhg": 71,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M8",
+      "visit_date": "2026-05-23",
+      "gestational_age_days": 245,
+      "weight_kg": 79.5,
+      "systolic_bp_mmhg": 101,
+      "diastolic_bp_mmhg": 73,
+      "fundal_height_cm": 31,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-05",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-33__15ITQvlEdR.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-34__1-TNB7bUpy.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-35__1G4fXy_5Gm.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-36__10YoYqH4k6.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-37__1ClQJtts9I.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-38__1CXcCUFyrj.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-39__17KgDI_D25.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-40__1WnbGI6FRA.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026978005",
+     "midwife_patient_code": null,
+     "facility_name": "CSC Al Amal",
+     "last_menstrual_period": "2025-07-25"
+    },
+    "encounters": [
+     {
+      "slot": "T2_V1",
+      "visit_date": "2025-11-15",
+      "gestational_age_days": 112,
+      "weight_kg": 54.7,
+      "systolic_bp_mmhg": 109,
+      "diastolic_bp_mmhg": 60,
+      "fundal_height_cm": 12,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2025-12-26",
+      "gestational_age_days": 154,
+      "weight_kg": 57.7,
+      "systolic_bp_mmhg": 117,
+      "diastolic_bp_mmhg": 60,
+      "fundal_height_cm": 18,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2026-02-07",
+      "gestational_age_days": 196,
+      "weight_kg": 59.6,
+      "systolic_bp_mmhg": 101,
+      "diastolic_bp_mmhg": 65,
+      "fundal_height_cm": 24,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2026-02-26",
+      "gestational_age_days": 217,
+      "weight_kg": 60.0,
+      "systolic_bp_mmhg": 114,
+      "diastolic_bp_mmhg": 64,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M9",
+      "visit_date": "2026-04-19",
+      "gestational_age_days": 266,
+      "weight_kg": 62.7,
+      "systolic_bp_mmhg": 111,
+      "diastolic_bp_mmhg": 77,
+      "fundal_height_cm": 34,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-06",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-41__1PEcVIoFXJ.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-42__1RrCOGAZgm.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-43.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-44__1XxzcLjCYe.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-45__1CU3r5Tdou.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-46__13tFG11aaA.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-47__1IUs1h6KZQ.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-48__1JY9DkRr_Z.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026987006",
+     "midwife_patient_code": null,
+     "facility_name": "DR Bni Ahmed",
+     "last_menstrual_period": "2025-11-21"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V1",
+      "visit_date": "2026-01-28",
+      "gestational_age_days": 70,
+      "weight_kg": 73.7,
+      "systolic_bp_mmhg": 109,
+      "diastolic_bp_mmhg": 61,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T1_V2",
+      "visit_date": "2026-02-20",
+      "gestational_age_days": 91,
+      "weight_kg": 74.2,
+      "systolic_bp_mmhg": 120,
+      "diastolic_bp_mmhg": 63,
+      "fundal_height_cm": null,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V1",
+      "visit_date": "2026-03-23",
+      "gestational_age_days": 119,
+      "weight_kg": 76.7,
+      "systolic_bp_mmhg": 117,
+      "diastolic_bp_mmhg": 61,
+      "fundal_height_cm": 13,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2026-04-24",
+      "gestational_age_days": 154,
+      "weight_kg": 77.8,
+      "systolic_bp_mmhg": 113,
+      "diastolic_bp_mmhg": 75,
+      "fundal_height_cm": 18,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2026-06-03",
+      "gestational_age_days": 196,
+      "weight_kg": 80.1,
+      "systolic_bp_mmhg": 111,
+      "diastolic_bp_mmhg": 72,
+      "fundal_height_cm": 24,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2026-06-27",
+      "gestational_age_days": 217,
+      "weight_kg": 81.1,
+      "systolic_bp_mmhg": 117,
+      "diastolic_bp_mmhg": 64,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-07",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-49__1SVq0XRfj2.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-50__1JrJI1k9zk.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-51__1ArSWOxwYZ.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-52__13GPlkmxU-.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-53__1Djbws5jOt.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-54__155-coOlhB.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-55__1t5UQZZmWv.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-56__14R5jqMZgt.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026163007",
+     "midwife_patient_code": null,
+     "facility_name": "CSU Ennahda",
+     "last_menstrual_period": "2025-11-23"
+    },
+    "encounters": [
+     {
+      "slot": "T2_V1",
+      "visit_date": "2026-03-18",
+      "gestational_age_days": 112,
+      "weight_kg": 63.4,
+      "systolic_bp_mmhg": 100,
+      "diastolic_bp_mmhg": 61,
+      "fundal_height_cm": 12,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-08",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-57.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-58.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-59.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-60.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-61.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-62.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-63.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-64.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026803008",
+     "midwife_patient_code": null,
+     "facility_name": "CSCA Lahraouiyine",
+     "last_menstrual_period": "2025-12-22"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V1",
+      "visit_date": "2026-02-14",
+      "gestational_age_days": 56,
+      "weight_kg": 74.9,
+      "systolic_bp_mmhg": 120,
+      "diastolic_bp_mmhg": 61,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T1_V2",
+      "visit_date": "2026-03-15",
+      "gestational_age_days": 84,
+      "weight_kg": 75.5,
+      "systolic_bp_mmhg": 120,
+      "diastolic_bp_mmhg": 60,
+      "fundal_height_cm": null,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V1",
+      "visit_date": "2026-05-02",
+      "gestational_age_days": 133,
+      "weight_kg": 77.1,
+      "systolic_bp_mmhg": 101,
+      "diastolic_bp_mmhg": 78,
+      "fundal_height_cm": 15,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2026-05-25",
+      "gestational_age_days": 154,
+      "weight_kg": 79.8,
+      "systolic_bp_mmhg": 101,
+      "diastolic_bp_mmhg": 72,
+      "fundal_height_cm": 18,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2026-06-21",
+      "gestational_age_days": 182,
+      "weight_kg": 80.2,
+      "systolic_bp_mmhg": 100,
+      "diastolic_bp_mmhg": 76,
+      "fundal_height_cm": 22,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2026-07-28",
+      "gestational_age_days": 217,
+      "weight_kg": 81.2,
+      "systolic_bp_mmhg": 106,
+      "diastolic_bp_mmhg": 63,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M9",
+      "visit_date": "2026-09-17",
+      "gestational_age_days": 266,
+      "weight_kg": 85.3,
+      "systolic_bp_mmhg": 108,
+      "diastolic_bp_mmhg": 72,
+      "fundal_height_cm": 34,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-09",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-65.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-66.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-67.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-68.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-69.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-70.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-71.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-72.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026842009",
+     "midwife_patient_code": null,
+     "facility_name": "CSC Ksar Jdid",
+     "last_menstrual_period": "2025-04-14"
+    },
+    "encounters": [
+     {
+      "slot": "T2_V2",
+      "visit_date": "2025-09-22",
+      "gestational_age_days": 161,
+      "weight_kg": 74.8,
+      "systolic_bp_mmhg": 138,
+      "diastolic_bp_mmhg": 89,
+      "fundal_height_cm": 19,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2025-10-11",
+      "gestational_age_days": 182,
+      "weight_kg": 75.0,
+      "systolic_bp_mmhg": 149,
+      "diastolic_bp_mmhg": 95,
+      "fundal_height_cm": 22,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M7",
+      "visit_date": "2025-11-18",
+      "gestational_age_days": 217,
+      "weight_kg": 77.4,
+      "systolic_bp_mmhg": 153,
+      "diastolic_bp_mmhg": 93,
+      "fundal_height_cm": 27,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M8",
+      "visit_date": "2025-12-16",
+      "gestational_age_days": 245,
+      "weight_kg": 78.0,
+      "systolic_bp_mmhg": 157,
+      "diastolic_bp_mmhg": 102,
+      "fundal_height_cm": 31,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M9",
+      "visit_date": "2026-01-06",
+      "gestational_age_days": 266,
+      "weight_kg": 80.3,
+      "systolic_bp_mmhg": 164,
+      "diastolic_bp_mmhg": 98,
+      "fundal_height_cm": 34,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "patient-10",
+   "pages": [
+    "data/Paper Registry/dossiers_specimen_10_patientes-73.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-74.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-75.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-76.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-77.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-78.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-79.png",
+    "data/Paper Registry/dossiers_specimen_10_patientes-80.png"
+   ],
+   "expected": {
+    "document": {
+     "registry_file_number": "2026590010",
+     "midwife_patient_code": null,
+     "facility_name": "CSUA Hay Riad",
+     "last_menstrual_period": "2025-10-03"
+    },
+    "encounters": [
+     {
+      "slot": "T1_V1",
+      "visit_date": "2025-11-30",
+      "gestational_age_days": 56,
+      "weight_kg": 72.9,
+      "systolic_bp_mmhg": 103,
+      "diastolic_bp_mmhg": 78,
+      "fundal_height_cm": null,
+      "syphilis_test": "NEGATIVE",
+      "hiv_test": "NEGATIVE"
+     },
+     {
+      "slot": "T1_V2",
+      "visit_date": "2025-12-26",
+      "gestational_age_days": 84,
+      "weight_kg": 74.8,
+      "systolic_bp_mmhg": 120,
+      "diastolic_bp_mmhg": 64,
+      "fundal_height_cm": null,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V1",
+      "visit_date": "2026-01-29",
+      "gestational_age_days": 119,
+      "weight_kg": 76.1,
+      "systolic_bp_mmhg": 113,
+      "diastolic_bp_mmhg": 60,
+      "fundal_height_cm": 13,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V2",
+      "visit_date": "2026-03-21",
+      "gestational_age_days": 168,
+      "weight_kg": 77.7,
+      "systolic_bp_mmhg": 111,
+      "diastolic_bp_mmhg": 70,
+      "fundal_height_cm": 20,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "T2_V3",
+      "visit_date": "2026-04-06",
+      "gestational_age_days": 182,
+      "weight_kg": 79.7,
+      "systolic_bp_mmhg": 104,
+      "diastolic_bp_mmhg": 64,
+      "fundal_height_cm": 22,
+      "syphilis_test": null,
+      "hiv_test": null
+     },
+     {
+      "slot": "M8",
+      "visit_date": "2026-06-04",
+      "gestational_age_days": 245,
+      "weight_kg": 81.8,
+      "systolic_bp_mmhg": 114,
+      "diastolic_bp_mmhg": 73,
+      "fundal_height_cm": 31,
+      "syphilis_test": null,
+      "hiv_test": null
+     }
+    ]
+   }
+  }
+ ]
+}

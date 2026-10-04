@@ -1,0 +1,1412 @@
+{
+  "document": {
+    "document_id": "DOC-000001",
+    "status": "NEEDS_REVIEW",
+    "grouping_status": "PROVISIONAL",
+    "sender_id": "whatsapp:+212600000001",
+    "facility_id": "FAC-SIDI-SMAIL",
+    "created_at": "2026-10-04T04:46:11+00:00",
+    "last_page_at": "2026-10-04T04:46:11+00:00",
+    "updated_at": "2026-10-04T04:46:12+00:00",
+    "revision": 1,
+    "failure_reason": null,
+    "sync_attempts": 0,
+    "sync_next_attempt_at": null
+  },
+  "sync_receipt": null,
+  "next_step": "FIELD",
+  "pages": [
+    {
+      "page_id": "PAGE-000001",
+      "position": 1,
+      "media_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+      "received_at": "2026-10-04T04:46:11+00:00",
+      "captured_at": null,
+      "source_message_id": "wamid.example-1",
+      "retake_requested_at": null,
+      "retake_reason": null
+    },
+    {
+      "page_id": "PAGE-000002",
+      "position": 2,
+      "media_ref": "data/Paper Registry/dossiers_specimen_10_patientes-02.png",
+      "received_at": "2026-10-04T04:46:11+00:00",
+      "captured_at": null,
+      "source_message_id": "wamid.example-2",
+      "retake_requested_at": null,
+      "retake_reason": null
+    },
+    {
+      "page_id": "PAGE-000003",
+      "position": 3,
+      "media_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+      "received_at": "2026-10-04T04:46:11+00:00",
+      "captured_at": null,
+      "source_message_id": "wamid.example-3",
+      "retake_requested_at": null,
+      "retake_reason": null
+    }
+  ],
+  "draft": {
+    "schema_version": "1.0",
+    "layout_id": "ma-fiche-surveillance-grossesse-v1",
+    "notes": "OCR local (pages spécimen) : toute valeur incertaine nécessite une validation humaine.",
+    "extraction": {
+      "extractor": "tesseract",
+      "extractor_version": "tesseract-specimen-consensus-v2",
+      "processed_at": "2026-10-04T04:46:12+00:00"
+    },
+    "pages": [
+      {
+        "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png",
+        "section": "cover"
+      },
+      {
+        "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-02.png",
+        "section": "identification"
+      },
+      {
+        "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+        "section": "current_pregnancy"
+      }
+    ],
+    "pii_detected": [
+      {
+        "category": "adresse",
+        "action": "NOT_EXTRACTED"
+      },
+      {
+        "category": "cin",
+        "action": "NOT_EXTRACTED"
+      },
+      {
+        "category": "mari",
+        "action": "NOT_EXTRACTED"
+      },
+      {
+        "category": "nom",
+        "action": "NOT_EXTRACTED"
+      },
+      {
+        "category": "téléphone",
+        "action": "NOT_EXTRACTED"
+      }
+    ],
+    "document_fields": {
+      "registry_file_number": {
+        "raw_text": "2026-823-007",
+        "value": "2026823007",
+        "unit": null,
+        "confidence": 0.5,
+        "field_status": "NEEDS_REVIEW",
+        "validation_flags": [
+          "OCR_READINGS_DISAGREE"
+        ],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      },
+      "midwife_patient_code": {
+        "raw_text": null,
+        "value": null,
+        "unit": null,
+        "confidence": null,
+        "field_status": "NOT_PROVIDED",
+        "validation_flags": [
+          "NOT_ON_THIS_LAYOUT"
+        ],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      },
+      "facility_name": {
+        "raw_text": ":",
+        "value": null,
+        "unit": null,
+        "confidence": null,
+        "field_status": "NEEDS_REVIEW",
+        "validation_flags": [
+          "OCR_VALUE_UNCLEAR"
+        ],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-01.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      },
+      "last_menstrual_period": {
+        "raw_text": "26/04/2025",
+        "value": "2025-04-26",
+        "unit": null,
+        "confidence": 1.0,
+        "field_status": "KNOWN",
+        "validation_flags": [],
+        "source": {
+          "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png"
+        },
+        "verification": {
+          "state": "UNVERIFIED",
+          "by": null,
+          "at": null
+        },
+        "corrections": []
+      }
+    },
+    "encounters": [
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "T1_V2",
+        "fields": {
+          "visit_date": {
+            "raw_text": "20/07/2025",
+            "value": "2025-07-20",
+            "unit": null,
+            "confidence": 0.25,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Venue le",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": "12 SA",
+            "value": 84,
+            "unit": "days",
+            "confidence": 0.75,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Âge probable",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": "58.8",
+            "value": 58.8,
+            "unit": "kg",
+            "confidence": 0.75,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Poids (kg)",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": "04/74",
+            "value": null,
+            "unit": "mmHg",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": "04/74",
+            "value": null,
+            "unit": "mmHg",
+            "confidence": null,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_VALUE_UNCLEAR"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": "–",
+            "value": null,
+            "unit": "cm",
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "MARKED_DASH"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "HU (cm)",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": "Neg",
+            "value": "NEGATIVE",
+            "unit": null,
+            "confidence": 0.75,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Syphilis (TPHA/VDRL)",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": "Neg",
+            "value": "NEGATIVE",
+            "unit": null,
+            "confidence": 0.75,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Sérologie VIH",
+              "column": "1er trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      },
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "T2_V2",
+        "fields": {
+          "visit_date": {
+            "raw_text": "28/09/2025",
+            "value": "2025-09-28",
+            "unit": null,
+            "confidence": 0.75,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_READINGS_DISAGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Venue le",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": "22 SA",
+            "value": 154,
+            "unit": "days",
+            "confidence": 0.75,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Âge probable",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": "62.7",
+            "value": 62.7,
+            "unit": "kg",
+            "confidence": 0.75,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Poids (kg)",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": "106/77",
+            "value": 106,
+            "unit": "mmHg",
+            "confidence": 0.25,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": "106/77",
+            "value": 77,
+            "unit": "mmHg",
+            "confidence": 0.25,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": "18",
+            "value": 18,
+            "unit": "cm",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "HU (cm)",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Syphilis (TPHA/VDRL)",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Sérologie VIH",
+              "column": "2e trimestre – visite 2"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      },
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "T2_V3",
+        "fields": {
+          "visit_date": {
+            "raw_text": "01/11/2025",
+            "value": "2025-11-01",
+            "unit": null,
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Venue le",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": "27 SA",
+            "value": 189,
+            "unit": "days",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Âge probable",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": "64.3",
+            "value": 64.3,
+            "unit": "kg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Poids (kg)",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": "102/60",
+            "value": 102,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": "102/60",
+            "value": 60,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": "23",
+            "value": 23,
+            "unit": "cm",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "HU (cm)",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Syphilis (TPHA/VDRL)",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Sérologie VIH",
+              "column": "2e trimestre – visite 3"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      },
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "M7",
+        "fields": {
+          "visit_date": {
+            "raw_text": "01/12/2025",
+            "value": "2025-12-01",
+            "unit": null,
+            "confidence": 0.5,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Venue le",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": "31 SA",
+            "value": 217,
+            "unit": "days",
+            "confidence": 0.25,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Âge probable",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": "64.8",
+            "value": 64.8,
+            "unit": "kg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Poids (kg)",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": "103/66",
+            "value": 103,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": "103/66",
+            "value": 66,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": "27",
+            "value": 27,
+            "unit": "cm",
+            "confidence": 0.25,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE",
+              "FUNDAL_HEIGHT_NOT_CONFIRMED"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "HU (cm)",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Syphilis (TPHA/VDRL)",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Sérologie VIH",
+              "column": "7e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      },
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "M8",
+        "fields": {
+          "visit_date": {
+            "raw_text": "29/12/2025",
+            "value": "2025-12-29",
+            "unit": null,
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Venue le",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": "35 SA",
+            "value": 245,
+            "unit": "days",
+            "confidence": 0.5,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Âge probable",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": "66.2",
+            "value": 66.2,
+            "unit": "kg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Poids (kg)",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": "115/63",
+            "value": 115,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": "115/63",
+            "value": 63,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": "31",
+            "value": 31,
+            "unit": "cm",
+            "confidence": 0.75,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_READINGS_DISAGREE",
+              "FUNDAL_HEIGHT_NOT_CONFIRMED"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "HU (cm)",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Syphilis (TPHA/VDRL)",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Sérologie VIH",
+              "column": "8e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      },
+      {
+        "encounter_type": "ANTENATAL",
+        "slot": "M9",
+        "fields": {
+          "visit_date": {
+            "raw_text": "18/01/2026",
+            "value": "2026-01-18",
+            "unit": null,
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Venue le",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "gestational_age_days": {
+            "raw_text": "38 SA",
+            "value": 266,
+            "unit": "days",
+            "confidence": 0.5,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "OCR_FEW_READINGS_AGREE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Âge probable",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "weight_kg": {
+            "raw_text": "66.8",
+            "value": 66.8,
+            "unit": "kg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Poids (kg)",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "systolic_bp_mmhg": {
+            "raw_text": "110/60",
+            "value": 110,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "diastolic_bp_mmhg": {
+            "raw_text": "110/60",
+            "value": 60,
+            "unit": "mmHg",
+            "confidence": 1.0,
+            "field_status": "KNOWN",
+            "validation_flags": [],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "TA",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "fundal_height_cm": {
+            "raw_text": "34",
+            "value": 34,
+            "unit": "cm",
+            "confidence": 1.0,
+            "field_status": "NEEDS_REVIEW",
+            "validation_flags": [
+              "FUNDAL_HEIGHT_NOT_CONFIRMED"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "HU (cm)",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "syphilis_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Syphilis (TPHA/VDRL)",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          },
+          "hiv_test": {
+            "raw_text": null,
+            "value": null,
+            "unit": null,
+            "confidence": null,
+            "field_status": "NOT_PROVIDED",
+            "validation_flags": [
+              "BLANK_ON_PAGE"
+            ],
+            "source": {
+              "page_ref": "data/Paper Registry/dossiers_specimen_10_patientes-03.png",
+              "row": "Sérologie VIH",
+              "column": "9e mois"
+            },
+            "verification": {
+              "state": "UNVERIFIED",
+              "by": null,
+              "at": null
+            },
+            "corrections": []
+          }
+        }
+      }
+    ]
+  },
+  "review": {
+    "blocking": [
+      {
+        "scope": "document",
+        "encounter_index": null,
+        "slot": null,
+        "field": "registry_file_number",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "document",
+        "encounter_index": null,
+        "slot": null,
+        "field": "facility_name",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "T1_V2",
+        "field": "visit_date",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "T1_V2",
+        "field": "systolic_bp_mmhg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 0,
+        "slot": "T1_V2",
+        "field": "diastolic_bp_mmhg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 1,
+        "slot": "T2_V2",
+        "field": "visit_date",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 1,
+        "slot": "T2_V2",
+        "field": "systolic_bp_mmhg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 1,
+        "slot": "T2_V2",
+        "field": "diastolic_bp_mmhg",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 3,
+        "slot": "M7",
+        "field": "visit_date",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 3,
+        "slot": "M7",
+        "field": "gestational_age_days",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 3,
+        "slot": "M7",
+        "field": "fundal_height_cm",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 4,
+        "slot": "M8",
+        "field": "gestational_age_days",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 4,
+        "slot": "M8",
+        "field": "fundal_height_cm",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 5,
+        "slot": "M9",
+        "field": "gestational_age_days",
+        "reason": "NEEDS_REVIEW"
+      },
+      {
+        "scope": "encounter",
+        "encounter_index": 5,
+        "slot": "M9",
+        "field": "fundal_height_cm",
+        "reason": "NEEDS_REVIEW"
+      }
+    ],
+    "candidates": [],
+    "suggested_patient_id": null,
+    "selection": null,
+    "selection_warnings": [],
+    "encounter_matches": [
+      {
+        "encounter_index": 0,
+        "slot": "T1_V2",
+        "visit_date": "2025-07-20",
+        "outcome": "NEW",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      },
+      {
+        "encounter_index": 1,
+        "slot": "T2_V2",
+        "visit_date": "2025-09-28",
+        "outcome": "NEW",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      },
+      {
+        "encounter_index": 2,
+        "slot": "T2_V3",
+        "visit_date": "2025-11-01",
+        "outcome": "NEW",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      },
+      {
+        "encounter_index": 3,
+        "slot": "M7",
+        "visit_date": "2025-12-01",
+        "outcome": "NEW",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      },
+      {
+        "encounter_index": 4,
+        "slot": "M8",
+        "visit_date": "2025-12-29",
+        "outcome": "NEW",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      },
+      {
+        "encounter_index": 5,
+        "slot": "M9",
+        "visit_date": "2026-01-18",
+        "outcome": "NEW",
+        "existing_visit_id": null,
+        "diffs": [],
+        "flags": []
+      }
+    ],
+    "next_step": "FIELD"
+  },
+  "registration": null,
+  "events": [
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:11+00:00",
+      "detail": {
+        "from": null,
+        "to": "CAPTURED"
+      }
+    },
+    {
+      "type": "PAGE_RECEIVED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:11+00:00",
+      "detail": {
+        "page_id": "PAGE-000001",
+        "position": 1,
+        "captured_at": null
+      }
+    },
+    {
+      "type": "PAGE_RECEIVED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:11+00:00",
+      "detail": {
+        "page_id": "PAGE-000002",
+        "position": 2,
+        "captured_at": null
+      }
+    },
+    {
+      "type": "PAGE_RECEIVED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:11+00:00",
+      "detail": {
+        "page_id": "PAGE-000003",
+        "position": 3,
+        "captured_at": null
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:11+00:00",
+      "detail": {
+        "from": "CAPTURED",
+        "to": "PENDING_AI"
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:12+00:00",
+      "detail": {
+        "from": "PENDING_AI",
+        "to": "AI_PROCESSED"
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:12+00:00",
+      "detail": {
+        "from": "AI_PROCESSED",
+        "to": "NEEDS_REVIEW"
+      }
+    }
+  ],
+  "move_targets": []
+}

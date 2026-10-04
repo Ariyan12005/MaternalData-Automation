@@ -18,7 +18,7 @@ Midwives send **photos of the paper fiche**—nothing else. No ID documents, no 
 
 | Key | Source |
 |-----|--------|
-| `registry_file_number` | *N° de la fiche* on the cover (`1-1.jpg`) |
+| `registry_file_number` | *N° de la fiche* on the cover (page 1 of the booklet) |
 | `midwife_patient_code` | Code written on the booklet (e.g. `CM: 164125`) |
 | `patient_id` | Generated (`PAT-000001`), never derived from name or keys |
 
@@ -32,7 +32,10 @@ Keys are unique **per facility**. A visit is identified by (`patient_id`, `encou
 2. Auto-reply per page: *« Reçu : page N. Merci, le traitement est en cours. »*
 3. No clinical Q&A in the midwife thread.
 
-In the MVP this channel is a **simulator**. A browser phone panel posts JSON to `/api/whatsapp/messages`, and acknowledgments are stored and displayed but never sent to a phone. The real Meta Cloud API integration has not been started: webhook format, signature check, media download and outbound messages are all missing.
+Two channels share the same ingest code:
+
+- **Simulator** (default): a browser phone panel picks specimen pages or takes a camera photo and posts to `/api/whatsapp/messages`; acknowledgments are shown in the simulated thread.
+- **WhatsApp Cloud API** (`dayone/whatsapp.py`, enabled by `WHATSAPP_*` environment variables): `GET /webhook/whatsapp` answers Meta's verify-token handshake; `POST` calls must carry a valid `X-Hub-Signature-256`; images are downloaded through the Graph API and stored encrypted; the text `fin` closes the open group of pages; acknowledgments and retake requests are sent back through the Cloud API with retries. Tested against a fake Graph API only: no live Meta account has been connected.
 
 ## Offline: where the durable queue lives
 
@@ -40,21 +43,17 @@ Decision: **no companion app**. The midwife's phone runs WhatsApp only.
 
 | Segment | Who holds the data while something is down | Durable? | Ours? |
 |---------|--------------------------------------------|----------|-------|
-| Phone has no network | WhatsApp's own outbox on the phone; delivered when the network returns | Yes (WhatsApp behaviour) | **No**—we do not control its storage or encryption |
-| Platform receives a photo | `pages` + `documents` rows in the platform SQLite file (`var/dayone.sqlite3`), committed **before** the acknowledgment is sent | Yes | Yes |
+| Phone has no network (real WhatsApp) | WhatsApp's own outbox on the phone; delivered when the network returns | Yes (WhatsApp behaviour) | **No**—we do not control its storage or encryption |
+| Phone has no network (simulated phone, demo) | Browser outbox in IndexedDB, AES-GCM encrypted under a non-extractable WebCrypto key; sent in capture order on reconnection, with the original message ids | Yes (survives a page reload) | Yes, clearly labelled as simulation |
+| Platform receives a photo | `pages` + `documents` rows in the platform database (`var/dayone.sqlite3`, AES-GCM encrypted snapshot written after each commit), committed **before** the acknowledgment is sent | Yes | Yes |
 | AI / extraction unavailable | Document stays `CAPTURED` → `PENDING_AI` in the same database; the worker retries every second | Yes, survives restarts | Yes |
 | Webhook delivered twice | `source_message_id` unique → same page returned, no second acknowledgment | — | Yes |
-| Confirm retried | Already `REGISTERED` → stored result returned, no new visit | — | Yes |
+| Confirm retried | Already registered → stored result returned, no new visit | — | Yes |
+| Central registry unreachable | Document stays `SYNC_FAILED`; retried with exponential back-off, delivered once it returns (idempotency key) | Yes | Yes |
 
-**What the demo proves:** acknowledgment only after persistence; AI outage ("IA disponible" toggle) leaves documents queued and nothing is lost; queue and drafts survive a server restart (`tests/test_flow.py`); webhook replay and confirm retry never duplicate pages or visits.
+**What the demo proves:** an offline capture on the (simulated) phone, kept encrypted on the device, sent in order when connectivity returns; acknowledgment only after persistence; AI outage ("IA disponible") and central-registry outage ("Registre central disponible") leave work queued and nothing is lost; queue and drafts survive a server restart; webhook replay and confirm retry never duplicate pages or visits; registered visits reach `SYNCED`.
 
-**What it does not prove (gaps against `consignes-fr-en.pdf`):**
-
-- *Offline capture on the device with encrypted local storage* (§4, task 4). We rely on WhatsApp's outbox, which we neither build nor demonstrate. The official demo asks for "an offline capture, the return of connectivity"; ours shows the platform-side equivalent (AI outage → recovery).
-- Encryption at rest of the platform database and images: not implemented yet.
-- `SYNCED` (upload to a central registry): not implemented.
-
-Ask the organizers whether WhatsApp's outbox is an acceptable "local queue". If not, the fallback is a simulated phone outbox in the demo, clearly labelled as simulation (task 4 allows "simulated").
+**What it does not prove:** encryption of a real phone's WhatsApp storage (not ours). Ask the organizers whether the simulated phone outbox is acceptable as the "local queue" (task 4 allows "simulated").
 
 ## Conversational requirement: checked against the instructions
 
@@ -71,9 +70,9 @@ Moving review to the back-office therefore **changes that part of the submission
 |-------------|--------------------|
 | Confirm / Edit | Yes, as a one-question-at-a-time chat in the back-office screen |
 | Follow-up questions on illegible fields | Yes (`ILLEGIBLE` / `NEEDS_REVIEW` must be answered before registration) |
-| Manual entry when AI is unavailable | **Partly**: only after a failed extraction (`PROCESSING_FAILED`), one encounter; not offered while documents wait for an AI outage to end |
-| Multi-page sessions | Yes (provisional grouping, split/regroup) |
-| Retake photo | **Not yet**: would be a WhatsApp message to the midwife asking for a new photo of a given page |
+| Manual entry when AI is unavailable | Yes: after a failed extraction or while a document waits during an AI outage, with as many visits as needed |
+| Multi-page sessions | Yes (provisional grouping, split/regroup, "fin" closes a session) |
+| Retake photo | Yes: the reviewer (or the system, for an unusable photo) sends *« Merci de reprendre la photo de la page N »*; the next photo replaces the page |
 | Actor = midwife | **No**: actor is back-office staff, following the organizers' verbal guidance |
 
 Actions: get the organizers' guidance **in writing**; state the deviation in the README and the demo narration; keep the review logic channel-agnostic (same API) so it could be offered to the midwife in WhatsApp if required.
@@ -85,9 +84,10 @@ Per `consignes-fr-en.pdf`: extraction must ignore or redact direct identifiers o
 | Control | State in the MVP |
 |---------|------------------|
 | Only the 12 contract fields can be stored | Done: `validate_draft` rejects unknown fields |
-| Direct identifiers detected on the page | Recorded by hand in the fixtures (`pii_detected`); no real detection yet |
+| Direct identifiers detected on the page | OCR finds the printed labels (CIN, nom, prénom, adresse, téléphone, mari) and records them in `pii_detected` as `NOT_EXTRACTED`; the values are never read into fields |
 | PHI in logs | Request logs contain the path only, never query strings or bodies |
 | Original images and ground truth | Read only; pages reference files in `data/Paper Registry/` with a SHA-256 hash |
-| Encryption at rest | **Not implemented** (plain SQLite in `var/`) |
-| Authentication / roles | **Not implemented**: all API routes are open, including the demo reset; reviewer name is free text |
-| Transport | Plain HTTP, bound to `127.0.0.1` by default |
+| Encryption at rest | AES-256-GCM: database snapshot, uploaded photos, central-registry sink; key from `DAYONE_DATA_KEY` (or an owner-only `var/dayone.key` for development) |
+| Authentication / roles | Login with scrypt-hashed passwords, HttpOnly SameSite=Strict session cookie, CSRF header, roles `reviewer` / `admin`; the reviewer on every action is the signed-in user |
+| Transport | HTTPS with `--tls-cert` / `--tls-key` (Secure cookies, HSTS); bound to `127.0.0.1` by default |
+| Central registry | Anonymized payload: internal IDs and values, no link keys, no raw OCR text |

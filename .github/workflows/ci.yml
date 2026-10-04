@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Tesseract (French + English)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+      - name: Install Python dependencies
+        run: pip install "cryptography>=44,<47" "Pillow>=12.1,<13"
+      - name: Whitespace
+        run: git diff --check HEAD~1 || git diff --check
+      - name: Unit, flow and HTTP tests
+        run: python -m unittest discover -s tests -v
+      - name: OCR accuracy on the 10 specimen patients (FALSE-KNOWN and missed must be 0)
+        run: python eval/compare_ocr.py --markdown

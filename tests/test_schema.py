@@ -21,7 +21,7 @@ class FixtureContractTest(unittest.TestCase):
         blocking = schema.blocking_fields(load("sample_extraction.json"))
         self.assertEqual(
             [(b["slot"], b["field"], b["reason"]) for b in blocking],
-            [("T2_V1", "fundal_height_cm", "ILLEGIBLE"), ("M9", "visit_date", "NEEDS_REVIEW")],
+            [("M8", "fundal_height_cm", "ILLEGIBLE"), ("M9", "visit_date", "NEEDS_REVIEW")],
         )
 
     def test_success_fixture_has_no_blocking_field(self):
@@ -32,13 +32,13 @@ class FixtureContractTest(unittest.TestCase):
 
     def test_validator_rejects_silent_known_below_threshold(self):
         draft = load("sample_extraction.json")
-        draft["encounters"][2]["fields"]["visit_date"]["field_status"] = "KNOWN"
+        draft["encounters"][5]["fields"]["visit_date"]["field_status"] = "KNOWN"
         errors = schema.validate_draft(draft)
         self.assertTrue(any("below" in e for e in errors), errors)
 
     def test_validator_rejects_value_on_missing_status(self):
         draft = load("success_extraction.json")
-        draft["encounters"][0]["fields"]["weight_kg"]["value"] = 60
+        draft["encounters"][0]["fields"]["fundal_height_cm"]["value"] = 12  # marked "–" on the page
         self.assertTrue(schema.validate_draft(draft))
 
 

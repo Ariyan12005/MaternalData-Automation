@@ -1,0 +1,77 @@
+{
+  "document": {
+    "document_id": "DOC-000002",
+    "status": "PROCESSING_FAILED",
+    "grouping_status": "PROVISIONAL",
+    "sender_id": "whatsapp:+212600000001",
+    "facility_id": "FAC-SIDI-SMAIL",
+    "created_at": "2026-10-04T04:46:12+00:00",
+    "last_page_at": "2026-10-04T04:46:12+00:00",
+    "updated_at": "2026-10-04T04:46:12+00:00",
+    "revision": 0,
+    "failure_reason": "NOT_A_SPECIMEN_PAGE",
+    "sync_attempts": 0,
+    "sync_next_attempt_at": null
+  },
+  "sync_receipt": null,
+  "next_step": "FAILED",
+  "pages": [
+    {
+      "page_id": "PAGE-000004",
+      "position": 1,
+      "media_ref": "upload/19a70c3acddec096f2a2d636b2387aa9aadeead9519b445cb7087d4eb212fc34.jpg",
+      "received_at": "2026-10-04T04:46:12+00:00",
+      "captured_at": null,
+      "source_message_id": "wamid.example-camera",
+      "retake_requested_at": null,
+      "retake_reason": null
+    }
+  ],
+  "draft": null,
+  "review": null,
+  "registration": null,
+  "events": [
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:12+00:00",
+      "detail": {
+        "from": null,
+        "to": "CAPTURED"
+      }
+    },
+    {
+      "type": "PAGE_RECEIVED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:12+00:00",
+      "detail": {
+        "page_id": "PAGE-000004",
+        "position": 1,
+        "captured_at": null
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:12+00:00",
+      "detail": {
+        "from": "CAPTURED",
+        "to": "PENDING_AI"
+      }
+    },
+    {
+      "type": "STATUS_CHANGED",
+      "actor": "system",
+      "at": "2026-10-04T04:46:12+00:00",
+      "detail": {
+        "from": "PENDING_AI",
+        "to": "PROCESSING_FAILED",
+        "code": "NOT_A_SPECIMEN_PAGE",
+        "message": "L'OCR ne lit que les pages spécimen de data/Paper Registry : 19a70c3acddec096f2a2d636b2387aa9aadeead9519b445cb7087d4eb212fc34.jpg. Saisissez ce dossier à la main."
+      }
+    }
+  ],
+  "move_targets": [
+    "DOC-000001"
+  ]
+}

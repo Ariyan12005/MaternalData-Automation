@@ -1,7 +1,13 @@
-"""SQLite persistence. One connection guarded by a lock; writes use BEGIN IMMEDIATE transactions."""
+"""SQLite persistence. One connection guarded by a lock; writes use BEGIN IMMEDIATE transactions.
+
+With a cipher the database lives in memory and an AES-GCM encrypted snapshot is
+written atomically after every committed transaction, so the file on disk is
+never readable without the key.
+"""
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -40,7 +46,10 @@ CREATE TABLE IF NOT EXISTS documents (
     revision INTEGER NOT NULL DEFAULT 0,
     selection_json TEXT,
     registration_json TEXT,
-    failure_reason TEXT
+    failure_reason TEXT,
+    sync_attempts INTEGER NOT NULL DEFAULT 0,
+    sync_next_attempt_at TEXT,
+    sync_receipt_json TEXT
 );
 CREATE TABLE IF NOT EXISTS pages (
     page_id TEXT PRIMARY KEY,
@@ -50,7 +59,11 @@ CREATE TABLE IF NOT EXISTS pages (
     media_ref TEXT NOT NULL,
     media_sha256 TEXT NOT NULL,
     position INTEGER NOT NULL,
-    received_at TEXT NOT NULL
+    received_at TEXT NOT NULL,
+    retake_requested_at TEXT,
+    retake_reason TEXT,
+    superseded_by TEXT,
+    captured_at TEXT
 );
 CREATE TABLE IF NOT EXISTS patients (
     patient_id TEXT PRIMARY KEY,
@@ -85,7 +98,11 @@ CREATE TABLE IF NOT EXISTS messages (
     direction TEXT NOT NULL CHECK (direction IN ('IN', 'OUT')),
     body TEXT,
     media_ref TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    delivery_status TEXT,
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    provider_message_id TEXT,
+    delivery_error TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,18 +115,75 @@ CREATE TABLE IF NOT EXISTS events (
 """
 
 
+def _rollback_journal(image: bytes) -> bytes:
+    """Clear the WAL flag (header bytes 18-19) of a database image: an in-memory copy cannot use a WAL file."""
+    if len(image) >= 20 and image[18:20] == b"\x02\x02":
+        return image[:18] + b"\x01\x01" + image[20:]
+    return image
+
+
+# Columns added after the first release: (table, column, declaration).
+MIGRATIONS = (
+    ("pages", "retake_requested_at", "TEXT"),
+    ("pages", "retake_reason", "TEXT"),
+    ("pages", "superseded_by", "TEXT"),
+    ("pages", "captured_at", "TEXT"),
+    ("documents", "sync_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("documents", "sync_next_attempt_at", "TEXT"),
+    ("documents", "sync_receipt_json", "TEXT"),
+    ("messages", "delivery_status", "TEXT"),
+    ("messages", "delivery_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("messages", "provider_message_id", "TEXT"),
+    ("messages", "delivery_error", "TEXT"),
+)
+
+
 class Store:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, cipher=None):
         self.path = str(path)
+        self.cipher = cipher if self.path != ":memory:" else None
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None, timeout=10)
+        target = ":memory:" if self.cipher else self.path
+        self._conn = sqlite3.connect(target, check_same_thread=False, isolation_level=None, timeout=10)
         self._conn.row_factory = sqlite3.Row
+        if self.cipher and Path(self.path).exists():
+            raw = Path(self.path).read_bytes()
+            if raw.startswith(b"SQLite format 3\x00"):
+                # A database written before encryption: load it once, then it is saved encrypted.
+                plain = sqlite3.connect(self.path)
+                plain.backup(self._conn)
+                plain.close()
+                for suffix in ("-wal", "-shm"):
+                    Path(self.path + suffix).unlink(missing_ok=True)
+            else:
+                self._conn.deserialize(_rollback_journal(self.cipher.decrypt(raw, b"database")))
         self._conn.execute("PRAGMA foreign_keys = ON")
-        if self.path != ":memory:":
+        if not self.cipher and self.path != ":memory:":
             self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.executescript(SCHEMA_SQL)
+        self._migrate()
+        self._persist()
+
+    def _migrate(self) -> None:
+        for table, column, declaration in MIGRATIONS:
+            columns = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in columns:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+    def _persist(self) -> None:
+        """Write the encrypted snapshot (no-op for a plain database)."""
+        if not self.cipher:
+            return
+        blob = self.cipher.encrypt(_rollback_journal(self._conn.serialize()), b"database")
+        temporary = f"{self.path}.tmp"
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(blob)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self.path)
 
     @contextmanager
     def tx(self):
@@ -121,6 +195,7 @@ class Store:
                 self._conn.execute("ROLLBACK")
                 raise
             self._conn.execute("COMMIT")
+            self._persist()
 
     @contextmanager
     def read(self):
@@ -134,6 +209,7 @@ class Store:
                 self._conn.execute(f"DROP TABLE IF EXISTS {table}")
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.executescript(SCHEMA_SQL)
+            self._persist()
 
     def close(self) -> None:
         with self._lock:

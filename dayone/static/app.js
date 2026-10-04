@@ -1,12 +1,15 @@
 "use strict";
 
 const REVIEWABLE = new Set(["AI_PROCESSED", "NEEDS_REVIEW", "VALIDATED", "PATIENT_MATCHED", "DUPLICATE_SUSPECTED"]);
+const SPECIMEN_PATIENT_ONE = /\/dossiers_specimen_10_patientes-0[1-8](?:__[^/]*)?\.png$/;
 
 const DOC_STATUS = {
   CAPTURED: "Réception des pages", PENDING_AI: "En attente IA", AI_PROCESSED: "Traité par l'IA",
   NEEDS_REVIEW: "À vérifier", VALIDATED: "Champs validés", PATIENT_MATCHED: "Patiente choisie",
   REGISTERED: "Enregistré", PROCESSING_FAILED: "Échec extraction", DUPLICATE_SUSPECTED: "Doublon suspecté",
+  MANUAL_REVIEW_REQUIRED: "Photo à reprendre", SYNCED: "Synchronisé", SYNC_FAILED: "Synchro en échec",
 };
+const REGISTERED_STATES = new Set(["REGISTERED", "SYNCED", "SYNC_FAILED"]);
 const FIELD_STATUS = {
   KNOWN: "lu", NEEDS_REVIEW: "à vérifier", ILLEGIBLE: "illisible", NOT_PROVIDED: "non renseigné",
   UNKNOWN: "inconnu", NOT_APPLICABLE: "non applicable",
@@ -42,6 +45,8 @@ const state = {
   media: [],
   showAllMedia: false,
   selectedMedia: [],
+  captures: [],
+  cameraStream: null,
   lastMessage: null,
   documentId: null,
   detail: null,
@@ -52,6 +57,10 @@ const state = {
   error: null,
   busy: false,
   signatures: {},
+  user: null,
+  online: true,
+  outbox: [],
+  lastThread: [],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -78,10 +87,11 @@ function button(label, onclick, cls = "", { type = "button", disabled = false } 
 async function api(method, path, body) {
   const response = await fetch(path, {
     method,
-    headers: { "Content-Type": "application/json", "X-Reviewer": $("#reviewer").value.trim() },
+    headers: { "Content-Type": "application/json", "X-Requested-With": "dayone" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && path !== "/api/login") showLogin();
   if (!response.ok) {
     const error = new Error(data.error?.message || `Erreur ${response.status}`);
     Object.assign(error, { code: data.error?.code, details: data.error?.details, status: response.status });
@@ -94,7 +104,7 @@ async function api(method, path, body) {
 
 const spec = (name) => state.system.catalog.fields[name];
 const slotLabel = (slot) => state.system.catalog.slots[slot] || slot;
-const basename = (ref) => ref.split("/").pop();
+const basename = (ref) => (ref.startsWith("upload/") ? `photo caméra ${ref.slice(7, 13)}` : ref.split("/").pop());
 const mediaUrl = (ref) => "/media/" + encodeURIComponent(ref);
 const pct = (c) => (c === null || c === undefined ? "—" : `${Math.round(c * 100)} %`);
 
@@ -199,6 +209,16 @@ function startManualEntry() {
   return act(() => api("POST", `/api/documents/${state.documentId}/manual-entry`, {}));
 }
 
+function requestRetake(page) {
+  const reason = window.prompt(`Motif pour la sage-femme (page ${page.position}) :`, "photo floue ou coupée");
+  if (reason === null) return;
+  act(() => api("POST", `/api/pages/${page.page_id}/retake`, { reason }));
+}
+
+function addManualVisit() {
+  return act(() => api("POST", `/api/documents/${state.documentId}/encounters`, { expected_revision: revision() }));
+}
+
 function movePage(pageId, target) {
   return act(() => api("POST", `/api/pages/${pageId}/move`, { target_document_id: target }));
 }
@@ -220,6 +240,11 @@ async function sendPhotos() {
   const refs = [...state.selectedMedia];
   state.selectedMedia = [];
   renderMedia();
+  if (!state.online) {
+    for (const ref of refs) await queueOffline({ media_ref: ref });
+    notify(`${refs.length} photo(s) en attente sur le téléphone (chiffrées) : elles partiront au retour du réseau.`);
+    return;
+  }
   for (const ref of refs) {
     const body = { sender_id: state.senderId, message_id: newMessageId(), media_ref: ref };
     try {
@@ -247,6 +272,178 @@ async function replayLastMessage() {
   await refreshAll(true);
 }
 
+// ---------------------------------------------------------------- phone outbox (offline)
+// Photos taken without network wait on the phone, encrypted with AES-GCM under a
+// non-extractable key kept in IndexedDB; they are sent in order on reconnection
+// with their original message id, so a replay is ignored by the server.
+
+const OUTBOX_DB = "dayone-phone-outbox";
+
+function outboxDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(OUTBOX_DB, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("keys");
+      request.result.createObjectStore("items", { keyPath: "id", autoIncrement: true });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idb(store, mode, operation) {
+  const db = await outboxDb();
+  return new Promise((resolve, reject) => {
+    const request = operation(db.transaction(store, mode).objectStore(store));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function outboxKey() {
+  let key = await idb("keys", "readonly", (s) => s.get("main"));
+  if (!key) {
+    key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    await idb("keys", "readwrite", (s) => s.put(key, "main"));
+  }
+  return key;
+}
+
+async function seal(bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  return { iv, data: await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await outboxKey(), bytes) };
+}
+
+async function unseal(box) {
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv: box.iv }, await outboxKey(), box.data);
+}
+
+async function queueOffline({ media_ref = null, blob = null }) {
+  if (!window.crypto?.subtle) {
+    notify("Chiffrement indisponible dans ce navigateur : file hors ligne désactivée.", "error");
+    return;
+  }
+  const meta = { sender_id: state.senderId, message_id: newMessageId(), media_ref,
+                 captured_at: new Date().toISOString() };
+  const item = { meta: await seal(new TextEncoder().encode(JSON.stringify(meta))) };
+  if (blob) item.photo = await seal(await blob.arrayBuffer());
+  await idb("items", "readwrite", (s) => s.add(item));
+  await loadOutbox();
+}
+
+async function loadOutbox() {
+  if (!window.indexedDB || !window.crypto?.subtle) return;
+  const items = await idb("items", "readonly", (s) => s.getAll());
+  state.outbox = [];
+  for (const item of items) {
+    const meta = JSON.parse(new TextDecoder().decode(await unseal(item.meta)));
+    state.outbox.push({ id: item.id, meta, hasPhoto: Boolean(item.photo) });
+  }
+  const status = $("#outbox-status");
+  status.hidden = state.outbox.length === 0;
+  status.textContent = `${state.outbox.length} photo(s) en attente sur le téléphone (chiffrées)`;
+  renderThread(state.lastThread);
+}
+
+async function flushOutbox() {
+  const items = await idb("items", "readonly", (s) => s.getAll());
+  let sent = 0;
+  for (const item of items) {
+    const meta = JSON.parse(new TextDecoder().decode(await unseal(item.meta)));
+    try {
+      if (item.photo) {
+        const bytes = await unseal(item.photo);
+        const blob = new Blob([bytes], { type: "image/jpeg" });
+        meta.media_ref = (await uploadBlob(blob)).media_ref;
+      }
+      const result = await api("POST", "/api/whatsapp/messages", meta);
+      state.lastMessage = meta;
+      if (result.document_id !== state.documentId) selectDocument(result.document_id);
+      await idb("items", "readwrite", (s) => s.delete(item.id));
+      sent += 1;
+    } catch (error) {
+      notify(`Envoi interrompu : ${error.message}`, "error");
+      break;
+    }
+  }
+  await loadOutbox();
+  if (sent) notify(`Réseau revenu : ${sent} photo(s) envoyée(s) dans l'ordre de prise de vue.`);
+  $("#replay-last").disabled = !state.lastMessage;
+  await refreshAll(true);
+}
+
+async function setNetwork(online) {
+  state.online = online;
+  $(".phone").classList.toggle("offline", !online);
+  if (online) await flushOutbox();
+  else notify("Téléphone hors ligne : les photos restent sur le téléphone, chiffrées, jusqu'au retour du réseau.");
+}
+
+// ---------------------------------------------------------------- camera
+
+async function uploadBlob(blob) {
+  const response = await fetch("/api/media", {
+    method: "POST",
+    headers: { "Content-Type": blob.type || "image/jpeg", "X-Requested-With": "dayone" },
+    body: blob,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || `Erreur ${response.status}`);
+  return data;
+}
+
+async function uploadPhoto(blob) {
+  if (!state.online) {
+    await queueOffline({ blob });
+    notify("Photo prise hors ligne : elle attend sur le téléphone, chiffrée.");
+    return;
+  }
+  const data = await uploadBlob(blob);
+  state.captures = [...state.captures.filter((ref) => ref !== data.media_ref), data.media_ref];
+  if (!state.selectedMedia.includes(data.media_ref)) state.selectedMedia = [...state.selectedMedia, data.media_ref];
+  renderMedia();
+  notify("Photo prête : appuyez sur Envoyer.");
+}
+
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $("#camera-file").click();  // phones open the camera app, computers a file picker
+    return;
+  }
+  try {
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 2560 } }, audio: false,
+    });
+  } catch (error) {
+    notify("Caméra indisponible : choisissez un fichier.", "error");
+    $("#camera-file").click();
+    return;
+  }
+  $("#camera-video").srcObject = state.cameraStream;
+  $("#camera-dialog").showModal();
+}
+
+function closeCamera() {
+  state.cameraStream?.getTracks().forEach((track) => track.stop());
+  state.cameraStream = null;
+  if ($("#camera-dialog").open) $("#camera-dialog").close();
+}
+
+async function shootPhoto() {
+  const video = $("#camera-video");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  closeCamera();
+  try {
+    await uploadPhoto(blob);
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
+
 // ---------------------------------------------------------------- refresh
 
 async function refreshAll(force = false) {
@@ -263,6 +460,9 @@ async function refreshSystem() {
   const system = await api("GET", "/api/system");
   state.system = system;
   $("#ai-toggle").checked = system.ai_available;
+  $("#central-toggle").checked = system.central_available;
+  $("#mode-label").textContent = system.extractor === "fixture" ? "prototype · extraction à fixtures"
+    : `prototype · OCR ${system.extractor} (pages spécimen)`;
 }
 
 async function refreshThread(force) {
@@ -322,24 +522,31 @@ async function refreshTimeline(force) {
 // ---------------------------------------------------------------- phone
 
 function renderThread(messages) {
+  state.lastThread = messages;
   const box = $("#thread");
   const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const pending = state.outbox.map((item) => el("div", { class: "bubble mine pending" },
+    item.meta.media_ref ? el("small", {}, basename(item.meta.media_ref)) : el("small", {}, "photo (caméra)"),
+    el("span", {}, "⏱ en attente du réseau"),
+    el("time", {}, `prise à ${fmtTime(item.meta.captured_at)}`)));
   box.replaceChildren(...messages.map((m) => el("div", { class: `bubble ${m.direction === "IN" ? "mine" : "theirs"}` },
     m.media_ref ? el("img", { src: mediaUrl(m.media_ref), alt: basename(m.media_ref) }) : null,
     m.media_ref ? el("small", {}, basename(m.media_ref)) : null,
     m.body ? el("span", {}, m.body) : null,
     el("time", {}, fmtTime(m.created_at)),
-  )));
+  )), ...pending);
   if (atBottom || messages.length < 4) box.scrollTop = box.scrollHeight;
 }
 
 function renderMedia() {
-  const list = state.showAllMedia ? state.media : state.media.filter((ref) => /\/1-\d+\.jpg$/.test(ref));
+  const dataset = state.showAllMedia ? state.media : state.media.filter((ref) => SPECIMEN_PATIENT_ONE.test(ref));
+  const list = [...state.captures, ...dataset];
   $("#media-grid").replaceChildren(...list.map((ref) => {
     const order = state.selectedMedia.indexOf(ref);
+    const capture = state.captures.includes(ref);
     return el("button", {
       type: "button",
-      class: `thumb ${order >= 0 ? "selected" : ""}`,
+      class: `thumb ${order >= 0 ? "selected" : ""} ${capture ? "capture" : ""}`,
       title: basename(ref),
       onclick: () => {
         state.selectedMedia = order >= 0 ? state.selectedMedia.filter((r) => r !== ref) : [...state.selectedMedia, ref];
@@ -347,7 +554,7 @@ function renderMedia() {
       },
     },
     el("img", { src: mediaUrl(ref), alt: basename(ref), loading: "lazy" }),
-    el("span", {}, basename(ref)),
+    el("span", {}, capture ? `photo ${state.captures.indexOf(ref) + 1}` : basename(ref)),
     order >= 0 ? el("b", { class: "order" }, order + 1) : null);
   }));
   const send = $("#send-photos");
@@ -384,7 +591,7 @@ function renderReview() {
   const d = state.detail;
   if (!d) {
     root.replaceChildren(el("p", { class: "empty" },
-      "Sélectionnez un dossier, ou envoyez des photos depuis le téléphone (démo : 1-1.jpg puis 1-5.jpg)."));
+      "Sélectionnez un dossier, ou envoyez les pages spécimen 01, 02 et 03 depuis le téléphone."));
     return;
   }
   root.replaceChildren(...[
@@ -407,11 +614,15 @@ function renderDocumentHeader(d) {
 }
 
 function renderPages(d) {
-  const locked = d.document.status === "REGISTERED";
+  const locked = REGISTERED_STATES.has(d.document.status);
   return el("div", { class: "pages" }, d.pages.map((page) => el("figure", { class: "page" },
     el("a", { href: mediaUrl(page.media_ref), target: "_blank", rel: "noopener" },
       el("img", { src: mediaUrl(page.media_ref), alt: basename(page.media_ref) })),
     el("figcaption", {}, `p.${page.position} · ${basename(page.media_ref)}`),
+    page.captured_at ? el("span", { class: "muted" }, `prise ${fmtTime(page.captured_at)}, reçue ${fmtTime(page.received_at)}`) : null,
+    page.retake_requested_at ? el("span", { class: "retake" }, "nouvelle photo demandée") : null,
+    locked || page.retake_requested_at || d.document.status === "CAPTURED" ? null
+      : button("Reprendre la photo", () => requestRetake(page), "small"),
     locked ? null : el("select", {
       "aria-label": `Déplacer la page ${page.position}`,
       disabled: state.busy,
@@ -479,6 +690,18 @@ function historyMessage(event, d) {
       `Pages regroupées par ${event.actor} (${detail.page_id} : ${detail.from} → ${detail.to}). `
       + `${detail.discarded_reviews} vérification(s) annulée(s), nouvelle extraction.`);
   }
+  if (event.type === "STATUS_CHANGED" && ["SYNCED", "SYNC_FAILED"].includes(detail.to)) {
+    return el("div", { class: "msg note" }, detail.to === "SYNCED"
+      ? `Synchronisé avec le registre central (${detail.receipt?.receipt_id ?? ""}).`
+      : `Échec de synchronisation : ${detail.error}. Nouvel essai automatique.`);
+  }
+  if (event.type === "RETAKE_REQUESTED") {
+    return el("div", { class: "msg note" }, `Nouvelle photo de la page ${detail.position} demandée par ${event.actor}`
+      + (detail.reason ? ` : « ${detail.reason} »` : "") + ".");
+  }
+  if (event.type === "PAGE_RETAKEN") {
+    return el("div", { class: "msg note" }, `Nouvelle photo reçue pour la page ${detail.position}.`);
+  }
   if (event.type === "MANUAL_ENTRY_STARTED") {
     return el("div", { class: "msg note" }, `Saisie manuelle démarrée par ${event.actor}.`);
   }
@@ -495,9 +718,16 @@ function currentStep(d) {
     return botMessage(`Réception des pages en cours. Le dossier part en extraction ${state.system.grouping_window_seconds} s après la dernière photo.`);
   }
   if (step === "WAITING_AI") {
-    return botMessage(state.system.ai_available
-      ? "En file d'attente pour l'extraction…"
-      : "IA indisponible : le dossier attend dans la file. Rien n'est perdu ; il sera traité au retour de l'IA.");
+    if (state.system.ai_available) return botMessage("En file d'attente pour l'extraction…");
+    return el("div", { class: "msg bot question" },
+      el("p", {}, "IA indisponible : le dossier attend dans la file. Rien n'est perdu ; il sera traité au retour de l'IA. "
+        + "Vous pouvez aussi le saisir à la main dès maintenant."),
+      el("div", { class: "actions" }, button("Saisie manuelle", startManualEntry)));
+  }
+  if (step === "WAITING_RETAKE") {
+    const pages = d.pages.filter((p) => p.retake_requested_at).map((p) => p.position).join(", ");
+    return botMessage(`En attente d'une nouvelle photo de la page ${pages} : le message a été envoyé à la sage-femme. `
+      + "L'extraction reprendra automatiquement à la réception.");
   }
   if (step === "FAILED") {
     return el("div", { class: "msg bot question" },
@@ -615,7 +845,7 @@ function candidateCard(candidate, index, suggested) {
 function summary(d) {
   const review = d.review;
   const selection = review.selection;
-  const reviewer = $("#reviewer").value.trim();
+  const reviewer = state.user?.username;
   const node = el("div", { class: "msg bot question summary" },
     el("div", { class: "q-title" }, "Récapitulatif avant enregistrement"));
 
@@ -673,6 +903,12 @@ function registrationMessage(d) {
       + `patiente ${registration.patient_id}${registration.patient_created ? " (créée)" : ""}.`),
     el("ul", {}, registration.visits.map((visit) => el("li", {},
       `${visit.visit_id} — ${fmtDate(visit.visit_date)} (${slotLabel(visit.slot)}) : ${OUTCOME[visit.outcome]}`))),
+    el("p", { class: d.document.status === "SYNC_FAILED" ? "warn" : "muted" }, {
+      SYNCED: `Synchronisé avec le registre central (reçu ${d.sync_receipt?.receipt_id ?? "—"}).`,
+      SYNC_FAILED: `Registre central injoignable : nouvel essai automatique `
+        + `(${d.document.sync_attempts} essai(s), prochain à ${fmtTime(d.document.sync_next_attempt_at)}).`,
+      REGISTERED: "Envoi au registre central en cours…",
+    }[d.document.status]),
     el("div", { class: "actions" }, button("Voir le suivi de la patiente", () => {
       state.patientId = registration.patient_id;
       refreshTimeline(true);
@@ -708,8 +944,10 @@ function renderFieldGrid(d) {
       draft.encounters.map((encounter, index) =>
         cell({ scope: "encounter", encounter_index: index, field: name }, encounter.fields[name]))))));
 
+  const manual = draft.extraction.extractor === "manual" && editable;
   return el("details", { class: "field-grid", open: true },
     el("summary", {}, editable ? "Tous les champs (cliquer une case pour la modifier)" : "Tous les champs"),
+    manual ? el("div", { class: "actions" }, button("Ajouter une visite", addManualVisit, "small")) : null,
     el("div", { class: "legend" },
       ["KNOWN", "NEEDS_REVIEW", "ILLEGIBLE", "NOT_PROVIDED"].map((s) => el("span", { class: `cell st-${s}` }, FIELD_STATUS[s])),
       el("span", { class: "cell v-CORRECTED" }, "corrigé"), el("span", { class: "cell v-CONFIRMED" }, "confirmé")),
@@ -752,11 +990,55 @@ function renderTimeline(patients, timeline) {
 
 // ---------------------------------------------------------------- init
 
-async function init() {
-  const reviewerInput = $("#reviewer");
-  reviewerInput.value = localStorage.getItem("dayone.reviewer") || reviewerInput.value;
-  reviewerInput.addEventListener("change", () => localStorage.setItem("dayone.reviewer", reviewerInput.value.trim()));
+// ---------------------------------------------------------------- session
 
+function showLogin() {
+  if (!$("#login-dialog").open) $("#login-dialog").showModal();
+  $("#login-username").focus();
+}
+
+function setUser(user) {
+  state.user = user;
+  $("#current-user").textContent = user ? `${user.username} (${user.role === "admin" ? "admin" : "agent"})` : "";
+  document.body.classList.toggle("is-admin", user?.role === "admin");
+}
+
+async function login(event) {
+  event.preventDefault();
+  const error = $("#login-error");
+  try {
+    setUser(await api("POST", "/api/login", {
+      username: $("#login-username").value.trim(), password: $("#login-password").value,
+    }));
+    $("#login-password").value = "";
+    error.hidden = true;
+    $("#login-dialog").close();
+    if (!state.started) await start();
+    else await refreshAll(true);
+  } catch (failure) {
+    error.textContent = failure.message;
+    error.hidden = false;
+  }
+}
+
+async function init() {
+  $("#login-form").addEventListener("submit", login);
+  $("#login-dialog").addEventListener("cancel", (event) => event.preventDefault());
+  $("#logout").addEventListener("click", async () => {
+    await api("POST", "/api/logout", {}).catch(() => {});
+    setUser(null);
+    showLogin();
+  });
+  try {
+    setUser(await api("GET", "/api/me"));
+  } catch (error) {
+    return;  // the login dialog is open; start() runs after sign-in
+  }
+  await start();
+}
+
+async function start() {
+  state.started = true;
   await refreshSystem();
   const senders = await api("GET", "/api/senders");
   state.senderId = senders[0]?.sender_id ?? null;
@@ -768,8 +1050,25 @@ async function init() {
     notify(event.target.checked ? "IA disponible : la file d'attente est traitée." : "IA indisponible : les dossiers restent en file d'attente.");
     await refreshAll(true);
   });
+  $("#central-toggle").addEventListener("change", async (event) => {
+    await api("POST", "/api/system/central", { available: event.target.checked });
+    notify(event.target.checked ? "Registre central disponible : les synchronisations en attente repartent."
+      : "Registre central indisponible : les dossiers enregistrés attendent leur synchronisation.");
+    await refreshAll(true);
+  });
+  $("#phone-network").addEventListener("change", (event) => setNetwork(event.target.checked));
+  await loadOutbox().catch(() => {});
   $("#show-all-media").addEventListener("change", (event) => { state.showAllMedia = event.target.checked; renderMedia(); });
   $("#send-photos").addEventListener("click", sendPhotos);
+  $("#open-camera").addEventListener("click", openCamera);
+  $("#camera-shoot").addEventListener("click", shootPhoto);
+  $("#camera-close").addEventListener("click", closeCamera);
+  $("#camera-dialog").addEventListener("close", closeCamera);
+  $("#camera-file").addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    event.target.value = "";
+    if (file) await uploadPhoto(file).catch((error) => notify(error.message, "error"));
+  });
   $("#replay-last").addEventListener("click", replayLastMessage);
   $("#patient-select").addEventListener("change", (event) => { state.patientId = event.target.value; refreshTimeline(true); });
   $("#reset-demo").addEventListener("click", async () => {

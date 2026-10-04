@@ -1,0 +1,7 @@
+# Core app: encryption at rest and photo checks.
+cryptography>=44,<47
+Pillow>=12.1,<13
+# Optional, Python 3.12 only: PaddleOCR comparison engine (--extractor paddleocr).
+paddlepaddle==3.2.0; python_version < "3.13"
+paddleocr==3.7.0; python_version < "3.13"
+paddlex==3.7.2; python_version < "3.13"

@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 var/
 .env
+.idea/
+.venv-paddle/
+.venv-paddle312/
+
+.venv/

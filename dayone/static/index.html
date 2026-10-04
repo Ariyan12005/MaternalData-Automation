@@ -5,31 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DayOne – prototype</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:,">
 </head>
 <body>
   <header class="topbar">
-    <h1>DayOne <span>prototype à fixtures</span></h1>
+    <h1>DayOne <span id="mode-label">prototype</span></h1>
     <div class="controls">
-      <label>Agent back-office <input id="reviewer" value="agent.demo" maxlength="60" autocomplete="off"></label>
-      <label class="toggle"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
-      <button id="reset-demo" type="button" class="ghost">Réinitialiser la démo</button>
+      <span id="current-user" class="muted"></span>
+      <label class="toggle admin-only"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
+      <label class="toggle admin-only"><input type="checkbox" id="central-toggle" checked> Registre central disponible</label>
+      <button id="reset-demo" type="button" class="ghost admin-only">Réinitialiser la démo</button>
+      <button id="logout" type="button" class="ghost">Se déconnecter</button>
     </div>
   </header>
 
   <main class="layout">
     <section class="phone" aria-label="WhatsApp simulé de la sage-femme">
       <div class="phone-header">
-        <strong>WhatsApp (simulé)</strong>
+        <div class="row">
+          <strong>WhatsApp (simulé)</strong>
+          <label class="network" title="Couper le réseau du téléphone : les photos attendent, chiffrées, sur le téléphone">
+            <input type="checkbox" id="phone-network" checked> Réseau</label>
+        </div>
         <span id="sender-label"></span>
+        <span id="outbox-status" hidden></span>
       </div>
       <div id="thread" class="thread" aria-live="polite"></div>
       <div class="composer">
         <div class="composer-head">
-          <span>Photos de la fiche</span>
-          <label><input type="checkbox" id="show-all-media"> toutes les images</label>
+          <span>Photos spécimen — patiente 1</span>
+          <label><input type="checkbox" id="show-all-media"> afficher les autres images</label>
         </div>
         <div id="media-grid" class="media-grid"></div>
         <div class="composer-actions">
+          <button id="open-camera" type="button" title="Photographier une page avec la caméra">Caméra</button>
+          <input id="camera-file" type="file" accept="image/jpeg,image/png" capture="environment" hidden>
           <button id="send-photos" type="button" class="primary" disabled>Envoyer</button>
           <button id="replay-last" type="button" class="ghost" disabled
                   title="Renvoie le dernier webhook avec le même identifiant de message">Rejouer le dernier webhook</button>
@@ -52,6 +62,25 @@
       </div>
     </section>
   </main>
+
+  <dialog id="login-dialog" class="login-dialog" aria-label="Connexion">
+    <form id="login-form" method="dialog">
+      <h2>Connexion back-office</h2>
+      <label>Identifiant <input id="login-username" autocomplete="username" required maxlength="40"></label>
+      <label>Mot de passe <input id="login-password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="warn" hidden></p>
+      <button type="submit" class="primary">Se connecter</button>
+    </form>
+  </dialog>
+
+  <dialog id="camera-dialog" class="camera-dialog" aria-label="Caméra">
+    <video id="camera-video" autoplay playsinline muted></video>
+    <p class="muted">Cadrez toute la page, à plat et bien éclairée. Les photos caméra ne passent pas par l'OCR : elles vont en saisie manuelle.</p>
+    <div class="actions">
+      <button id="camera-shoot" type="button" class="primary">Prendre la photo</button>
+      <button id="camera-close" type="button" class="ghost">Fermer</button>
+    </div>
+  </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="/app.js"></script>
