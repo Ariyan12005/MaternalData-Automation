@@ -1,4 +1,4 @@
-"""HTTP API, simulated WhatsApp webhook and back-office UI (standard library only)."""
+"""HTTP API, simulated WhatsApp webhook and back-office UI (standard library + cryptography)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,16 @@ import json
 import logging
 import mimetypes
 import re
+import ssl
 import threading
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import crypto
+from .auth import Auth, AuthError, SESSION_HOURS
 from .extraction import FixtureExtractor
 from .live_ocr import LiveOcrExtractor, PaddleOcrReader, TesseractOcrReader
 from .media import MAX_PHOTO_BYTES, MediaStore
@@ -23,6 +26,16 @@ from .store import Store
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_BODY_BYTES = 64 * 1024
+SESSION_COOKIE = "dayone_session"
+CSRF_HEADER = "X-Requested-With"
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": ("default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; "
+                                "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+    "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+}
 
 log = logging.getLogger("dayone")
 
@@ -44,62 +57,84 @@ def build_service(db_path: str | Path, *, grouping_window_seconds: int = 8, extr
     )
     service.extractor = (FixtureExtractor(REPO_ROOT / "fixtures") if extractor_mode == "fixture"
                          else LiveOcrExtractor(REPO_ROOT, reader=readers[extractor_mode](), media=service.read_media))
+    service.auth = Auth(service.store)
     return service
 
 
 class Api:
+    """Routes: (method, pattern, role, handler). Role None = public, "any" = signed in, "admin" = admin only."""
+
     def __init__(self, service: DayOneService):
         self.service = service
+        self.auth: Auth = service.auth
         s = service
         self.routes = [
-            ("GET", r"/api/system", lambda m, q, b, r: s.system_info()),
-            ("POST", r"/api/system/ai", lambda m, q, b, r: s.set_ai_available(bool(b.get("available")))),
-            ("POST", r"/api/demo/reset", self._reset),
-            ("GET", r"/api/senders", lambda m, q, b, r: s.list_senders()),
-            ("GET", r"/api/media", lambda m, q, b, r: s.list_media()),
-            ("POST", r"/api/media", lambda m, q, b, r: s.upload_photo(b)),
-            ("POST", r"/api/pages/(PAGE-\d+)/retake", lambda m, q, b, r: s.request_retake(
-                m[1], reviewer=r, reason=b.get("reason"))),
-            ("POST", r"/api/whatsapp/messages", lambda m, q, b, r: s.ingest_photo(
+            ("GET", r"/api/me", "any", lambda m, q, b, u: u),
+            ("GET", r"/api/system", "any", lambda m, q, b, u: s.system_info()),
+            ("POST", r"/api/system/ai", "admin", lambda m, q, b, u: s.set_ai_available(bool(b.get("available")))),
+            ("POST", r"/api/demo/reset", "admin", self._reset),
+            ("GET", r"/api/users", "admin", lambda m, q, b, u: self.auth.list_users()),
+            ("POST", r"/api/users", "admin", lambda m, q, b, u: self.auth.create_user(
+                b.get("username"), b.get("password"), b.get("role", "reviewer"))),
+            ("GET", r"/api/senders", "any", lambda m, q, b, u: s.list_senders()),
+            ("POST", r"/api/senders", "admin", lambda m, q, b, u: s.register_sender(
+                sender_id=b.get("sender_id"), label=b.get("label"), facility_id=b.get("facility_id"),
+                facility_name=b.get("facility_name"))),
+            ("GET", r"/api/facilities", "any", lambda m, q, b, u: s.list_facilities()),
+            ("GET", r"/api/media", "any", lambda m, q, b, u: s.list_media()),
+            ("POST", r"/api/media", "any", lambda m, q, b, u: s.upload_photo(b)),
+            ("POST", r"/api/whatsapp/messages", "any", lambda m, q, b, u: s.ingest_photo(
                 sender_id=b.get("sender_id"), message_id=b.get("message_id"), media_ref=b.get("media_ref"))),
-            ("GET", r"/api/whatsapp/thread", lambda m, q, b, r: s.thread(_query(q, "sender_id"))),
-            ("GET", r"/api/documents", lambda m, q, b, r: s.list_documents()),
-            ("GET", r"/api/documents/(DOC-\d+)", lambda m, q, b, r: s.get_document(m[1])),
-            ("POST", r"/api/documents/(DOC-\d+)/fields", lambda m, q, b, r: s.review_field(
-                m[1], reviewer=r, scope=b.get("scope"), field=b.get("field"), action=b.get("action"),
+            ("GET", r"/api/whatsapp/thread", "any", lambda m, q, b, u: s.thread(_query(q, "sender_id"))),
+            ("GET", r"/api/documents", "any", lambda m, q, b, u: s.list_documents()),
+            ("GET", r"/api/documents/(DOC-\d+)", "any", lambda m, q, b, u: s.get_document(m[1])),
+            ("POST", r"/api/documents/(DOC-\d+)/fields", "any", lambda m, q, b, u: s.review_field(
+                m[1], reviewer=u["username"], scope=b.get("scope"), field=b.get("field"), action=b.get("action"),
                 encounter_index=b.get("encounter_index"), value=b.get("value"),
                 field_status=b.get("field_status"), expected_revision=b.get("expected_revision"))),
-            ("POST", r"/api/documents/(DOC-\d+)/patient", lambda m, q, b, r: s.select_patient(
-                m[1], reviewer=r, choice=b.get("choice"), patient_id=b.get("patient_id"),
+            ("POST", r"/api/documents/(DOC-\d+)/patient", "any", lambda m, q, b, u: s.select_patient(
+                m[1], reviewer=u["username"], choice=b.get("choice"), patient_id=b.get("patient_id"),
                 expected_revision=b.get("expected_revision"))),
-            ("POST", r"/api/documents/(DOC-\d+)/confirm", lambda m, q, b, r: s.confirm(
-                m[1], reviewer=r, existing_visit_decisions=b.get("existing_visit_decisions"),
+            ("POST", r"/api/documents/(DOC-\d+)/confirm", "any", lambda m, q, b, u: s.confirm(
+                m[1], reviewer=u["username"], existing_visit_decisions=b.get("existing_visit_decisions"),
                 expected_revision=b.get("expected_revision"))),
-            ("POST", r"/api/documents/(DOC-\d+)/manual-entry", lambda m, q, b, r: s.start_manual_entry(
-                m[1], reviewer=r)),
-            ("POST", r"/api/pages/(PAGE-\d+)/move", lambda m, q, b, r: s.move_page(
-                m[1], reviewer=r, target_document_id=b.get("target_document_id"))),
-            ("GET", r"/api/patients", lambda m, q, b, r: s.list_patients()),
-            ("GET", r"/api/patients/(PAT-\d+)/timeline", lambda m, q, b, r: s.patient_timeline(m[1])),
+            ("POST", r"/api/documents/(DOC-\d+)/manual-entry", "any", lambda m, q, b, u: s.start_manual_entry(
+                m[1], reviewer=u["username"])),
+            ("POST", r"/api/pages/(PAGE-\d+)/move", "any", lambda m, q, b, u: s.move_page(
+                m[1], reviewer=u["username"], target_document_id=b.get("target_document_id"))),
+            ("POST", r"/api/pages/(PAGE-\d+)/retake", "any", lambda m, q, b, u: s.request_retake(
+                m[1], reviewer=u["username"], reason=b.get("reason"))),
+            ("GET", r"/api/patients", "any", lambda m, q, b, u: s.list_patients()),
+            ("GET", r"/api/patients/(PAT-\d+)/timeline", "any", lambda m, q, b, u: s.patient_timeline(m[1])),
         ]
 
-    def _reset(self, match, query, body, reviewer):
+    def _reset(self, match, query, body, user):
         self.service.reset_demo(with_history=body.get("with_history", True))
         return {"ok": True}
 
-    def dispatch(self, method: str, path: str, query: dict, body: dict, reviewer: str | None):
-        for route_method, pattern, handler in self.routes:
+    def dispatch(self, method: str, path: str, query: dict, body, user: dict | None):
+        for route_method, pattern, role, handler in self.routes:
             match = re.fullmatch(pattern, path)
-            if match and route_method == method:
-                try:
-                    return HTTPStatus.OK, handler(match, query, body, reviewer)
-                except ServiceError as exc:
-                    return exc.status, {"error": {"code": exc.code, "message": exc.message, "details": exc.details}}
-                except Exception:
-                    log.exception("unhandled error on %s %s", method, path)
-                    return HTTPStatus.INTERNAL_SERVER_ERROR, {
-                        "error": {"code": "INTERNAL", "message": "Erreur interne.", "details": None}}
-        return HTTPStatus.NOT_FOUND, {"error": {"code": "NOT_FOUND", "message": "Route inconnue.", "details": None}}
+            if not match or route_method != method:
+                continue
+            if role is not None and user is None:
+                return HTTPStatus.UNAUTHORIZED, _error("LOGIN_REQUIRED", "Connectez-vous pour continuer.")
+            if role == "admin" and user["role"] != "admin":
+                return HTTPStatus.FORBIDDEN, _error("ADMIN_ONLY", "Action réservée à un administrateur.")
+            try:
+                return HTTPStatus.OK, handler(match, query, body, user)
+            except ServiceError as exc:
+                return exc.status, {"error": {"code": exc.code, "message": exc.message, "details": exc.details}}
+            except AuthError as exc:
+                return exc.status, _error(exc.code, exc.message)
+            except Exception:
+                log.exception("unhandled error on %s %s", method, path)
+                return HTTPStatus.INTERNAL_SERVER_ERROR, _error("INTERNAL", "Erreur interne.")
+        return HTTPStatus.NOT_FOUND, _error("NOT_FOUND", "Route inconnue.")
+
+
+def _error(code: str, message: str) -> dict:
+    return {"error": {"code": code, "message": message, "details": None}}
 
 
 def _query(query: dict, name: str) -> str:
@@ -109,9 +144,9 @@ def _query(query: dict, name: str) -> str:
     return values[0]
 
 
-def make_handler(api: Api):
+def make_handler(api: Api, *, secure_cookies: bool = False):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "DayOne/0.1"
+        server_version = "DayOne/0.2"
 
         def do_GET(self):
             self._handle("GET")
@@ -119,9 +154,24 @@ def make_handler(api: Api):
         def do_POST(self):
             self._handle("POST")
 
+        def _session_token(self) -> str | None:
+            cookie = SimpleCookie(self.headers.get("Cookie") or "")
+            return cookie[SESSION_COOKIE].value if SESSION_COOKIE in cookie else None
+
         def _handle(self, method: str) -> None:
             url = urlparse(self.path)
             if url.path.startswith("/api/"):
+                # Cross-site requests cannot set a custom header without a CORS preflight, which is never granted.
+                if method == "POST" and self.headers.get(CSRF_HEADER) != "dayone":
+                    self._send_json(HTTPStatus.FORBIDDEN, _error("CSRF", "En-tête de requête manquant."))
+                    return
+                if method == "POST" and url.path == "/api/login":
+                    self._login()
+                    return
+                if method == "POST" and url.path == "/api/logout":
+                    api.auth.logout(self._session_token())
+                    self._send_json(HTTPStatus.OK, {"ok": True}, cookie=self._cookie("", max_age=0))
+                    return
                 body = {}
                 if method == "POST" and url.path == "/api/media":
                     body = self._read_bytes(MAX_PHOTO_BYTES)
@@ -129,27 +179,46 @@ def make_handler(api: Api):
                     body = self._read_json()
                 if body is None:
                     return
-                status, payload = api.dispatch(method, url.path, parse_qs(url.query), body,
-                                               self.headers.get("X-Reviewer"))
-                self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json")
+                user = api.auth.user_for(self._session_token())
+                status, payload = api.dispatch(method, url.path, parse_qs(url.query), body, user)
+                self._send_json(status, payload)
             elif method == "GET" and url.path.startswith("/media/"):
+                if api.auth.user_for(self._session_token()) is None:
+                    self._send(HTTPStatus.UNAUTHORIZED, b"", "text/plain")
+                    return
                 self._send_media(unquote(url.path[len("/media/"):]))
             elif method == "GET":
                 self._send_static(url.path)
             else:
                 self._send(HTTPStatus.METHOD_NOT_ALLOWED, b"", "text/plain")
 
+        def _login(self) -> None:
+            body = self._read_json()
+            if body is None:
+                return
+            try:
+                token, user = api.auth.login(body.get("username"), body.get("password"))
+            except AuthError as exc:
+                self._send_json(exc.status, _error(exc.code, exc.message))
+                return
+            log.info("login %s", user["username"])
+            self._send_json(HTTPStatus.OK, user, cookie=self._cookie(token, max_age=SESSION_HOURS * 3600))
+
+        def _cookie(self, value: str, *, max_age: int) -> str:
+            flags = f"{SESSION_COOKIE}={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}"
+            return flags + ("; Secure" if secure_cookies else "")
+
         def _read_bytes(self, limit: int):
             length = int(self.headers.get("Content-Length") or 0)
             if length > limit:
-                self._send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE", "Photo trop volumineuse.")
+                self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, _error("BODY_TOO_LARGE", "Photo trop volumineuse."))
                 return None
             return self.rfile.read(length) if length else b""
 
         def _read_json(self):
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY_BYTES:
-                self._send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE", "Requête trop volumineuse.")
+                self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, _error("BODY_TOO_LARGE", "Requête trop volumineuse."))
                 return None
             raw = self.rfile.read(length) if length else b"{}"
             try:
@@ -157,13 +226,12 @@ def make_handler(api: Api):
             except json.JSONDecodeError:
                 body = None
             if not isinstance(body, dict):
-                self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_JSON", "Corps JSON invalide.")
+                self._send_json(HTTPStatus.BAD_REQUEST, _error("INVALID_JSON", "Corps JSON invalide."))
                 return None
             return body
 
-        def _send_error(self, status, code, message):
-            payload = {"error": {"code": code, "message": message, "details": None}}
-            self._send(status, json.dumps(payload).encode("utf-8"), "application/json")
+        def _send_json(self, status, payload, *, cookie: str | None = None) -> None:
+            self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json", cookie=cookie)
 
         def _send_media(self, media_ref: str) -> None:
             try:
@@ -171,8 +239,9 @@ def make_handler(api: Api):
             except ServiceError:
                 self._send(HTTPStatus.NOT_FOUND, b"", "text/plain")
                 return
+            # Private: patient pages must not sit in shared caches.
             self._send(HTTPStatus.OK, data, mimetypes.guess_type(media_ref)[0] or "application/octet-stream",
-                       cache=True)
+                       cache="private, max-age=600")
 
         def _send_static(self, path: str) -> None:
             name = "index.html" if path in ("", "/") else path.lstrip("/")
@@ -184,12 +253,18 @@ def make_handler(api: Api):
                 file.suffix, "application/octet-stream")
             self._send(HTTPStatus.OK, file.read_bytes(), f"{content_type}; charset=utf-8")
 
-        def _send(self, status, data: bytes, content_type: str, *, cache: bool = False) -> None:
+        def _send(self, status, data: bytes, content_type: str, *, cache: str = "no-store",
+                  cookie: str | None = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "max-age=3600" if cache else "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", cache)
+            for header, value in SECURITY_HEADERS.items():
+                self.send_header(header, value)
+            if secure_cookies:
+                self.send_header("Strict-Transport-Security", "max-age=31536000")
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             self.wfile.write(data)
 
@@ -218,12 +293,26 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--db", default=str(REPO_ROOT / "var" / "dayone.sqlite3"))
     parser.add_argument("--window", type=int, default=8, help="multipage grouping window in seconds")
     parser.add_argument("--extractor", choices=("fixture", "tesseract", "paddleocr"), default="fixture",
-                        help="fixture for the stable demo; tesseract for fast local real-photo OCR; "
+                        help="fixture for the stable demo; tesseract for local OCR of the specimen pages; "
                              "paddleocr for the slower PaddleOCR comparison")
+    parser.add_argument("--tls-cert", help="PEM certificate: serve HTTPS (with --tls-key)")
+    parser.add_argument("--tls-key", help="PEM private key for --tls-cert")
+    parser.add_argument("--add-user", metavar="NAME", help="create a back-office account, then exit")
+    parser.add_argument("--role", choices=("reviewer", "admin"), default="reviewer", help="role for --add-user")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     service = build_service(args.db, grouping_window_seconds=args.window, extractor_mode=args.extractor)
+    if args.add_user:
+        import getpass
+        user = service.auth.create_user(args.add_user, getpass.getpass(f"Mot de passe pour {args.add_user} : "), args.role)
+        print(f"Compte créé : {user['username']} ({user['role']})")
+        service.store.close()
+        return
+    password = service.auth.ensure_admin()
+    if password:
+        print(f"Premier démarrage : compte « admin », mot de passe « {password} » (affiché une seule fois ; "
+              "créez des comptes nominatifs avec --add-user).")
     # Fixture mode includes a pre-confirmed history for the visual demo.  Real
     # OCR always requires a human review, so it must start with an empty demo.
     if args.extractor != "fixture":
@@ -231,10 +320,17 @@ def main(argv: list[str] | None = None) -> None:
     else:
         service.ensure_seed()
 
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(Api(service)))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(Api(service), secure_cookies=bool(args.tls_cert)))
+    scheme = "http"
+    if args.tls_cert:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(args.tls_cert, args.tls_key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
     stop = threading.Event()
     threading.Thread(target=_run_worker, args=(service, stop), daemon=True).start()
-    print(f"DayOne prototype running at http://{args.host}:{args.port}/  (Ctrl+C to stop)")
+    print(f"DayOne prototype running at {scheme}://{args.host}:{args.port}/  (Ctrl+C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

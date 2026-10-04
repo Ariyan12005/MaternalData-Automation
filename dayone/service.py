@@ -142,6 +142,35 @@ class DayOneService:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_facilities(self) -> list[dict]:
+        with self.store.read() as db:
+            return [dict(row) for row in db.execute("SELECT facility_id, name FROM facilities ORDER BY name")]
+
+    def register_sender(self, *, sender_id: str, label: str, facility_id: str | None = None,
+                        facility_name: str | None = None) -> dict:
+        """Map a midwife's WhatsApp number to one facility (an existing one, or a new one by name)."""
+        sender_id = (sender_id or "").strip()
+        if not re.fullmatch(r"whatsapp:\+\d{8,15}", sender_id):
+            raise Invalid("INVALID_SENDER", "Numéro attendu au format whatsapp:+212600000000.")
+        label = (label or "").strip()
+        if not 2 <= len(label) <= 80:
+            raise Invalid("INVALID_LABEL", "Libellé : 2 à 80 caractères.")
+        with self.store.tx() as db:
+            if db.execute("SELECT 1 FROM senders WHERE sender_id = ?", (sender_id,)).fetchone():
+                raise Conflict("SENDER_EXISTS", "Ce numéro est déjà enregistré.")
+            if facility_id:
+                if not db.execute("SELECT 1 FROM facilities WHERE facility_id = ?", (facility_id,)).fetchone():
+                    raise NotFound("FACILITY_NOT_FOUND", "Établissement introuvable.")
+            else:
+                name = (facility_name or "").strip()
+                if not 2 <= len(name) <= 80:
+                    raise Invalid("FACILITY_REQUIRED", "Choisissez un établissement ou donnez son nom.")
+                facility_id = next_id(db, "FAC")
+                db.execute("INSERT INTO facilities(facility_id, name) VALUES (?, ?)", (facility_id, name))
+            db.execute("INSERT INTO senders(sender_id, facility_id, label) VALUES (?, ?, ?)",
+                       (sender_id, facility_id, label))
+        return {"sender_id": sender_id, "label": label, "facility_id": facility_id}
+
     # ------------------------------------------------------------------ media
 
     def list_media(self) -> list[str]:

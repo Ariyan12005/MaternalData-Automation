@@ -56,6 +56,7 @@ const state = {
   error: null,
   busy: false,
   signatures: {},
+  user: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -82,10 +83,11 @@ function button(label, onclick, cls = "", { type = "button", disabled = false } 
 async function api(method, path, body) {
   const response = await fetch(path, {
     method,
-    headers: { "Content-Type": "application/json", "X-Reviewer": $("#reviewer").value.trim() },
+    headers: { "Content-Type": "application/json", "X-Requested-With": "dayone" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && path !== "/api/login") showLogin();
   if (!response.ok) {
     const error = new Error(data.error?.message || `Erreur ${response.status}`);
     Object.assign(error, { code: data.error?.code, details: data.error?.details, status: response.status });
@@ -262,7 +264,7 @@ async function replayLastMessage() {
 async function uploadPhoto(blob) {
   const response = await fetch("/api/media", {
     method: "POST",
-    headers: { "Content-Type": blob.type || "image/jpeg", "X-Reviewer": $("#reviewer").value.trim() },
+    headers: { "Content-Type": blob.type || "image/jpeg", "X-Requested-With": "dayone" },
     body: blob,
   });
   const data = await response.json().catch(() => ({}));
@@ -697,7 +699,7 @@ function candidateCard(candidate, index, suggested) {
 function summary(d) {
   const review = d.review;
   const selection = review.selection;
-  const reviewer = $("#reviewer").value.trim();
+  const reviewer = state.user?.username;
   const node = el("div", { class: "msg bot question summary" },
     el("div", { class: "q-title" }, "Récapitulatif avant enregistrement"));
 
@@ -834,11 +836,55 @@ function renderTimeline(patients, timeline) {
 
 // ---------------------------------------------------------------- init
 
-async function init() {
-  const reviewerInput = $("#reviewer");
-  reviewerInput.value = localStorage.getItem("dayone.reviewer") || reviewerInput.value;
-  reviewerInput.addEventListener("change", () => localStorage.setItem("dayone.reviewer", reviewerInput.value.trim()));
+// ---------------------------------------------------------------- session
 
+function showLogin() {
+  if (!$("#login-dialog").open) $("#login-dialog").showModal();
+  $("#login-username").focus();
+}
+
+function setUser(user) {
+  state.user = user;
+  $("#current-user").textContent = user ? `${user.username} (${user.role === "admin" ? "admin" : "agent"})` : "";
+  document.body.classList.toggle("is-admin", user?.role === "admin");
+}
+
+async function login(event) {
+  event.preventDefault();
+  const error = $("#login-error");
+  try {
+    setUser(await api("POST", "/api/login", {
+      username: $("#login-username").value.trim(), password: $("#login-password").value,
+    }));
+    $("#login-password").value = "";
+    error.hidden = true;
+    $("#login-dialog").close();
+    if (!state.started) await start();
+    else await refreshAll(true);
+  } catch (failure) {
+    error.textContent = failure.message;
+    error.hidden = false;
+  }
+}
+
+async function init() {
+  $("#login-form").addEventListener("submit", login);
+  $("#login-dialog").addEventListener("cancel", (event) => event.preventDefault());
+  $("#logout").addEventListener("click", async () => {
+    await api("POST", "/api/logout", {}).catch(() => {});
+    setUser(null);
+    showLogin();
+  });
+  try {
+    setUser(await api("GET", "/api/me"));
+  } catch (error) {
+    return;  // the login dialog is open; start() runs after sign-in
+  }
+  await start();
+}
+
+async function start() {
+  state.started = true;
   await refreshSystem();
   const senders = await api("GET", "/api/senders");
   state.senderId = senders[0]?.sender_id ?? null;

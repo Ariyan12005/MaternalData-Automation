@@ -10,9 +10,10 @@
   <header class="topbar">
     <h1>DayOne <span>prototype à fixtures</span></h1>
     <div class="controls">
-      <label>Agent back-office <input id="reviewer" value="agent.demo" maxlength="60" autocomplete="off"></label>
-      <label class="toggle"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
-      <button id="reset-demo" type="button" class="ghost">Réinitialiser la démo</button>
+      <span id="current-user" class="muted"></span>
+      <label class="toggle admin-only"><input type="checkbox" id="ai-toggle" checked> IA disponible</label>
+      <button id="reset-demo" type="button" class="ghost admin-only">Réinitialiser la démo</button>
+      <button id="logout" type="button" class="ghost">Se déconnecter</button>
     </div>
   </header>
 
@@ -54,6 +55,16 @@
       </div>
     </section>
   </main>
+
+  <dialog id="login-dialog" class="login-dialog" aria-label="Connexion">
+    <form id="login-form" method="dialog">
+      <h2>Connexion back-office</h2>
+      <label>Identifiant <input id="login-username" autocomplete="username" required maxlength="40"></label>
+      <label>Mot de passe <input id="login-password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="warn" hidden></p>
+      <button type="submit" class="primary">Se connecter</button>
+    </form>
+  </dialog>
 
   <dialog id="camera-dialog" class="camera-dialog" aria-label="Caméra">
     <video id="camera-video" autoplay playsinline muted></video>

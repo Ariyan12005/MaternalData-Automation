@@ -80,6 +80,11 @@ input, select { font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--
 .composer-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
 .composer-actions button { font-size: 0.8rem; }
 .thumb.capture img { outline: 2px solid #075e54; }
+.login-dialog { border: none; border-radius: 12px; padding: 1.2rem; width: min(360px, 92vw); }
+.login-dialog form { display: flex; flex-direction: column; gap: 0.7rem; }
+.login-dialog label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.login-dialog::backdrop { background: rgba(15, 23, 42, 0.55); }
+body:not(.is-admin) .admin-only { display: none; }
 .camera-dialog { border: none; border-radius: 12px; padding: 0.8rem; max-width: 92vw; }
 .camera-dialog video { width: min(640px, 86vw); border-radius: 8px; background: #000; display: block; }
 .page .retake { font-size: 0.72rem; color: var(--warn); }
