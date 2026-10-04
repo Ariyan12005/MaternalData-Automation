@@ -13,9 +13,9 @@
 
 ## Current MVP (fixture-driven, runs today)
 
-`python -m dayone` starts the app at <http://127.0.0.1:8000>. Demo flow: photo, acknowledgment, draft, back-office correction, patient selection, confirmation, patient timeline, plus a page retake (request, replacement photo, re-extraction). Tests: `python -m unittest discover -s tests -v` (34 tests).
+`python -m dayone` starts the app at <http://127.0.0.1:8000>. Demo flow: photo, acknowledgment, draft, back-office correction, patient selection, confirmation, patient timeline, plus a page retake (request, replacement photo, re-extraction). Tests: `python -m unittest discover -s tests -v` (62 tests).
 
-The WhatsApp side is a **simulator**: a phone panel in the browser posts JSON to `/api/whatsapp/messages`. There is no Meta Cloud API integration yet. The extractor is a **fixture lookup**, not a model.
+By default the WhatsApp side is a **simulator**: a phone panel in the browser posts JSON to `/api/whatsapp/messages`. A Cloud API adapter (`--whatsapp-mode cloud`, `docs/whatsapp-cloud.md`) is implemented and tested against a mocked Meta API only; it has **not** been run against Meta's sandbox. The extractor is a **fixture lookup**, not a model.
 
 | Owner | MVP scope | Acceptance | State |
 |-------|-----------|------------|-------|
@@ -43,9 +43,9 @@ The WhatsApp side is a **simulator**: a phone panel in the browser posts JSON to
 | 4 | **Authentication and roles** on every `/api/*` route | Anyone who can reach the port can review, confirm, read timelines, or call `POST /api/demo/reset` (wipes the database). Reviewer identity is a free-text `X-Reviewer` header | Ariyan + Aymane | Not implemented; server binds to `127.0.0.1` by default |
 | 5 | **Offline-capture demo** ("an offline capture, the return of connectivity") | Required demo scenario | Ariyan + Aymane | Not demonstrated. We only show the platform-side equivalent (AI outage, then recovery) |
 | 6 | **`SYNCED`** / central sync | Lifecycle state in the instructions | Ariyan | Reserved, not implemented |
-| 7 | **Retake photo** over real WhatsApp | Rubric item (Confirm / Edit / **Retake**) | Aymane | Simulator done (`tests/test_retake.py`). Open: sending the request through the Cloud API and mapping the WhatsApp reply context to the request (depends on #9). The actor is still back-office staff (#1) |
+| 7 | **Retake photo** over real WhatsApp | Rubric item (Confirm / Edit / **Retake**) | Aymane | Simulator done (`tests/test_retake.py`). Cloud API: the request is sent as a reply quoting the photo, and a reply quoting the request replaces the page. This is tested with mocks only (`test_reply_quoting_the_retake_request_replaces_the_page`). Open: sandbox check that image replies carry `context.id` (not documented for images), and template messages for requests sent more than 24 h after the midwife's last message. The actor is still back-office staff (#1) |
 | 8 | **Real extractor** | 30-pt extraction criterion | Fatma | Not started; `FixtureExtractor` only covers 2 page sets |
-| 9 | **Real WhatsApp integration** | Bonus item; needed for a real pilot | Aymane | Not started (simulator only) |
+| 9 | **Real WhatsApp integration** | Bonus item; needed for a real pilot | Aymane | Partial: adapter implemented and tested against a mocked Meta API (`tests/test_whatsapp_cloud.py`). Observed on 2026-10-03 with a real Meta app (unpublished): webhook verification, a signed dashboard test webhook, real media upload and download into the review workflow, and duplicate replay. Open: real inbound messages need a **published app, which requires business verification**, and our app must be **subscribed to the WABA** (`GET /{waba-id}/subscribed_apps` does not list it; the fix, a `POST`, was not made). Also open: real sends, which are not authorised (sandbox databases are held), retake reply context, and template messages (`docs/whatsapp-cloud.md`, *Observed against Meta*). Depends on #3 (photos stored unencrypted), #4 and #10 (only the webhook listener may be exposed, through an HTTPS tunnel) |
 | 10 | **HTTPS** | Transport security | Ariyan | Not implemented (plain HTTP on localhost) |
 
 ---
@@ -232,7 +232,7 @@ Any new field must be added to `docs/schema.md` and `dayone/schema.py` first.
 | **1. Contract & setup** | Shared schema, identity strategy, fixtures | Done: `docs/schema.md`, `docs/identity-strategy.md`, `fixtures/` |
 | **2. Core MVP** | Photo → draft → back-office review → **Confirmer et enregistrer** → visit on timeline | Done with fixtures and the simulator: `test_photo_to_timeline`, browser walkthrough |
 | **3. Reliability** | Corrections, duplicate webhooks, retries, restart | Partly done: idempotency, concurrency and restart tested. Bad-photo handling needs the real extractor |
-| **4. Challenge depth** | Real extractor, Retake, encryption, auth, offline-capture demo, real WhatsApp | Retake done in the simulator (`tests/test_retake.py`); everything else not started (blockers 3–10) |
+| **4. Challenge depth** | Real extractor, Retake, encryption, auth, offline-capture demo, real WhatsApp | Retake done in the simulator (`tests/test_retake.py`); real WhatsApp adapter implemented with mocked Meta only, sandbox not verified (blockers 7, 9); everything else not started (blockers 3–6, 8, 10) |
 | **5. Submission** | README, architecture, extraction metrics, demo script | Partly done: README and demo script exist; no metrics |
 
 ---
@@ -281,7 +281,7 @@ Any new field must be added to `docs/schema.md` and `dayone/schema.py` first.
 
 ### Goals
 
-- **WhatsApp:** capture-only channel for midwives. Simulator today; real Cloud API later.
+- **WhatsApp:** capture-only channel for midwives. Simulator by default; Cloud API adapter implemented but not yet verified against Meta.
 - **Back-office UI:** carries the rubric's conversational review mechanics (confirm, edit, retake request, manual entry, multipage, patient match), with staff as the actor. This is a declared deviation from "verified by the midwife".
 
 ### Simulator (implemented, not real WhatsApp)
@@ -296,14 +296,26 @@ Any new field must be added to `docs/schema.md` and `dayone/schema.py` first.
 - [x] Replacement replay ignored; a second photo for a closed request is refused (`test_duplicate_replacement_webhook_is_ignored`).
 - [x] Replacement from another facility or another number is refused, with nothing stored (`test_other_sender_cannot_fulfil_request`).
 
-### Real WhatsApp integration (not started)
+### Real WhatsApp integration (implemented with mocked Meta; sandbox not verified)
 
-- [ ] Meta Cloud API webhook: Meta payload format, verify token, signature check, HTTPS; secrets in environment variables.
-- [ ] Media download from the Graph API into encrypted storage. Today, ingest only accepts files already in `data/Paper Registry/` (`resolve_media`).
-- [ ] Send acknowledgments through the Cloud API. Today they are only stored in `messages`.
-- [ ] Handle non-image messages (ignore text, optional `fin` to close a session).
-- [ ] Sender registration (number → facility) instead of the seeded demo sender.
-- [ ] **Retake over real WhatsApp:** send the request through the Cloud API and link the reply via its context (quoted message ID) instead of the simulator's explicit `retake_request_id` (blocker 7).
+Code: `dayone/whatsapp.py`, `make_webhook_handler` in `dayone/server.py`. Setup and checklist: `docs/whatsapp-cloud.md`. Evidence below is from `tests/test_whatsapp_cloud.py`, which uses a local fake of the Graph API and no credentials.
+
+- [x] Webhook GET verification with the verify token from the environment (`test_verification_echoes_challenge_only_with_the_configured_token`).
+- [x] `X-Hub-Signature-256` checked on the raw bytes before JSON parsing (`test_signature_is_checked_on_raw_bytes_before_parsing`). Event persisted before the `200`, with no Meta call inside the request (`test_signed_event_is_persisted_before_any_meta_call_or_acknowledgment`).
+- [x] Batched events: images, statuses, other message types and other phone numbers handled separately (`test_batch_separates_images_statuses_other_messages_and_other_numbers`). Non-image messages are recorded as `IGNORED`.
+- [x] Authenticated two-step media download into the existing review workflow (`test_image_is_downloaded_with_the_token_and_enters_the_review_workflow`). Checks: bounded size, timeout, MIME type and file signature, SHA-256, safe filenames, and token dropped on cross-host redirects (`test_download_is_bounded_even_when_the_declared_size_lies`, `test_slow_meta_hits_the_timeout_and_is_retried`, `test_hash_mismatch_is_retried_not_stored`, `test_media_id_never_reaches_a_path_or_filename`, `test_token_is_dropped_on_a_redirect_to_another_host`).
+- [x] Deduplication by WhatsApp message ID across redelivery and crash replay (`test_redelivered_webhooks_and_reprocessing_create_one_page_and_one_acknowledgment`).
+- [x] French acknowledgments and retake requests sent through a `Transport` abstraction, from a durable outbound queue with retries that never touch review (`test_transient_send_failure_is_retried_without_touching_review`, `test_permanent_send_failure_is_not_retried`, `test_status_webhooks_advance_delivery_and_failed_status_requeues_only_transient_codes`).
+- [x] Sender registration: `python -m dayone.whatsapp add-sender`. Unregistered numbers are rejected, with no download and the number not stored (`test_unknown_sender_media_is_never_downloaded_nor_its_number_kept`).
+- [x] Retake reply linked through the quoted message instead of `retake_request_id` (`test_reply_quoting_the_retake_request_replaces_the_page`, `test_photo_without_quote_or_for_a_closed_request_becomes_a_normal_page`).
+- [x] Webhook-only listener; back-office refused on non-loopback hosts in cloud mode (`test_listener_serves_only_the_webhook_path`, `test_back_office_listener_has_no_webhook_route`).
+- [x] Secrets only from the environment or `.env` (`.env.example`); logs free of tokens, signatures, numbers and image data (`test_logs_never_contain_tokens_signatures_sender_numbers_or_image_data`, `test_config_lists_missing_names_and_never_values`).
+- [ ] **Sandbox verification** with a real Meta app, test number and HTTPS tunnel. Partly done on 2026-10-03; see `docs/whatsapp-cloud.md` § *Observed against Meta*. Blocked on publishing the app, which needs business verification, and on subscribing the app to the WABA. Still open: whether image replies carry `context.id` (blocker 7).
+- [ ] Decide how to recognise senders who use WhatsApp usernames without sharing a phone number (`from_user_id` in Meta's new payloads). Today they would be rejected as unregistered.
+- [ ] Template messages for acknowledgments and retake requests outside the 24-hour customer service window (error `131047` today).
+- [ ] Encrypted media storage (blocker 3); photos are stored in plain files in `var/media/whatsapp/`.
+- [ ] Back-office screen for delivery status (only `GET /api/whatsapp/deliveries` exists).
+- [ ] Optional `fin` keyword to close a session; photos sent as *documents* are ignored today.
 
 ### Back-office review (implemented)
 
@@ -357,7 +369,7 @@ Any new field must be added to `docs/schema.md` and `dayone/schema.py` first.
 
 ### Implemented
 
-- [x] Data model in SQLite (`dayone/store.py`): `facilities`, `senders`, `documents` (status, revision, provisional grouping, draft, selection, registration), `pages` (unique `source_message_id`, SHA-256), `patients` (facility-unique keys), `visits` (unique patient + encounter + date, history), `messages`, `events`. There are no separate job or media tables: the queue is the document status, and media are references to the read-only dataset.
+- [x] Data model in SQLite (`dayone/store.py`): `facilities`, `senders`, `documents` (status, revision, provisional grouping, draft, selection, registration), `pages` (unique `source_message_id`, SHA-256), `patients` (facility-unique keys), `visits` (unique patient + encounter + date, history), `messages`, `events`. The extraction queue is the document status. Simulator media are references to the read-only dataset. The only job tables are the WhatsApp Cloud API ones (`whatsapp_inbound`, `whatsapp_outbound`; see *Needs review* below).
 - [x] Back-office API (`dayone/server.py`): list/get documents, review field, select patient, confirm, manual entry, move page, list patients, timeline.
 - [x] Raw + normalized value, confidence, status, flags, correction history, and verifier + timestamp are kept per field in the draft and copied to the visit; visit updates keep the previous values in `history_json`.
 - [x] Facility-scoped linking; a strong match only suggests; never auto-create (`dayone/linking.py`).
@@ -383,12 +395,22 @@ Written for the retake feature; Ariyan should review before merging:
 - [ ] `request_retake`, `cancel_retake` (cancel also posts a « Demande annulée » message), `thread()` now returns `retake_request_id` / `retake_status`, `get_document()` returns `retakes` and `pages[].pending_retake_id`, `list_documents()` returns `pending_retakes`, `next_step` can be `WAITING_RETAKE`.
 - [ ] `dayone/server.py`: routes `POST /api/pages/{id}/retake` and `POST /api/retakes/{id}/cancel`; `retake_request_id` passed through from the webhook body; static files now serve `.jpg` / `.png` with image content types (for the logo).
 
+### Needs review (WhatsApp Cloud API storage changes)
+
+Written for the Cloud API adapter (Aymane's area) but they touch Ariyan's storage, so Ariyan should review them before merging. Contract: `docs/schema.md` § WhatsApp Cloud API jobs.
+
+- [ ] `dayone/store.py`: `senders.channel` (`SIMULATOR` default / `WHATSAPP`), added to existing databases by `_migrate()` (`test_old_database_gains_the_sender_channel_column`).
+- [ ] New tables `whatsapp_inbound` (one row per WhatsApp message ID, the durable download/ingest job) and `whatsapp_outbound` (one row per `OUT` message to a `WHATSAPP` sender, the durable send job). `TABLES` drops both first on reset.
+- [ ] Trigger `whatsapp_outbound_enqueue`: queues outbound work in the same transaction as the `messages` insert, so `service.py` needed no change to send.
+- [ ] `dayone/service.py`: `DayOneService(..., inbound_media_dir=)` and `resolve_media` accepting `whatsapp-media/<sha256>.jpg|png` (strict name pattern, file must exist in that folder). `ingest_photo` and the review contracts are unchanged.
+- [ ] Received media are content-addressed plain files (no encryption, no retention policy yet; blocker 3).
+
 ### Open
 
 - [ ] **Encryption at rest** for the database and stored media, with keys from environment variables (blocker 3).
 - [ ] **Authentication and roles** on all `/api/*` routes, including `POST /api/demo/reset` and `/media/` (blocker 4).
 - [ ] **HTTPS** (blocker 10).
-- [ ] Media storage for real WhatsApp images: encrypted copy, linked to page and capture time, role-restricted download.
+- [ ] Media storage for real WhatsApp images: **encrypted** copy and role-restricted download. Plain content-addressed files linked to the page through `whatsapp_inbound.page_id` exist today.
 - [ ] `SYNCED` / central sync worker, plus `SYNC_FAILED` (blocker 6).
 - [ ] Notification job after registration.
 - [ ] HTTP API for an external extractor (only the in-process interface exists).
@@ -401,7 +423,7 @@ Written for the retake feature; Ariyan should review before merging:
 | Situation | Expected behavior | Evidence |
 |-----------|-------------------|----------|
 | Phone offline | WhatsApp's outbox holds the photos and delivers them on reconnect; replays deduplicated | **Not demonstrated**; outbox is not our code (blockers 2, 5) |
-| WhatsApp cloud unreachable | Inbound delayed; processed when delivered | Not applicable until real integration |
+| WhatsApp cloud unreachable | Inbound delayed; processed when delivered. Media download and sends retried with backoff | Mocked only: `test_transient_download_failure_retries_later_without_acknowledging`, `test_transient_send_failure_is_retried_without_touching_review` |
 | AI unavailable | Documents stay `PENDING_AI` ("IA indisponible" shown); processed when it returns | `test_queue_waits_while_ai_unavailable_and_survives_restart`, UI toggle |
 | Backend restart | Queue and drafts intact | Same test |
 | Crash during extraction | Document stays `PENDING_AI`, retried on the next tick | Code only (`process_document`); no test |
