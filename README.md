@@ -2,7 +2,9 @@
 
 Platform that turns **photos of paper maternal registries** into structured digital records, **tracks each woman across visits**, and routes uncertain extractions to **back-office review**.
 
-**Midwives only send documents** on WhatsApp; they do not manage patients or verify fields in chat. In the current MVP, WhatsApp is **simulated** in the browser by default. An optional WhatsApp Cloud API mode exists, but it has only been tested against a mocked Meta API so far. Extraction uses **fixtures** by default; an optional local OCR mode reads the synthetic specimen layout (see [Optional: local OCR](#optional-local-ocr-synthetic-specimen-layout) and [Simulator vs. real integration](#simulator-vs-real-integration)).
+The demo includes a **simulated midwife conversation** for uncertain fields, explicit patient selection and a final review before registration. WhatsApp is **simulated** in the browser by default. The optional Cloud API adapter has partial real Meta verification, documented in [WhatsApp evidence](docs/whatsapp-cloud.md); a real inbound photo and live outbound delivery remain unverified. Extraction uses **fixtures** by default; optional local PaddleOCR reads the synthetic specimen layout.
+
+**Submission demo:** follow [Part D of the demo script](docs/demo-script.md#part-d-optional-local-ocr--review--confirmation--timeline-simulator--local) for real local OCR, then demonstrate simulated central sync and the 31-column CSV export. The encrypted offline queue is a server-hosted simulation of interrupted transport, not capture on a disconnected phone. Use synthetic specimen pages and retain outbound holds. Missing export values stay blank; the 31-column format does not imply that every field is extracted.
 
 **Challenge:** *Une sage-femme, un téléphone et une IA* / *The Offline Midwife* (Challenge ID **17**).
 
@@ -43,7 +45,7 @@ Do not modify original images or ground-truth files per consignes.
 
 ## Run the MVP (fixture-driven)
 
-Python 3.10+ standard library only, with no dependencies to install.
+Python 3.10+ with the backend dependencies from `requirements.txt`; optional PaddleOCR uses Python 3.12 and `requirements-ocr.txt`.
 
 ```powershell
 python -m dayone                    # http://127.0.0.1:8000

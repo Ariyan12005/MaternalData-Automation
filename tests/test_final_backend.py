@@ -12,6 +12,71 @@ from tests.test_flow import FlowTestCase, COVER, T1_GRID, REVIEWER, REPO_ROOT, S
 
 
 class FinalBackendTest(FlowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.apis = []
+
+    def tearDown(self):
+        for api in self.apis:
+            api.close()
+        super().tearDown()
+
+    def make_api(self):
+        from dayone.server import Api
+        queue = OfflineQueue(Path(self.tmp.name) / f"offline-{len(self.apis)}.sqlite3",
+                             Cipher(Fernet.generate_key()))
+        api = Api(self.service, offline_queue=queue)
+        self.apis.append(api)
+        return api
+
+    def reply(self, document_id, **kwargs):
+        prompt = self.service.conversational_prompt(document_id)
+        return self.service.conversational_reply(document_id,
+                                                expected_revision=prompt.get("expected_revision"), **kwargs)
+
+    def test_conversational_stale_and_missing_revision_are_rejected(self):
+        from tests.test_flow import T2_T3_GRID
+        doc_id = self.send(COVER, T2_T3_GRID)
+        self.wait_for_draft()
+        original = self.service.conversational_prompt(doc_id)
+        api = self.make_api()
+        status, body = api.dispatch("POST", f"/api/documents/{doc_id}/conversational", {},
+                                    {"action": "CONFIRM"}, REVIEWER)
+        self.assertEqual(status, 422)
+        self.assertEqual(body["error"]["code"], "REVISION_REQUIRED")
+        self.reply(doc_id, reviewer=REVIEWER, action="CORRECT", value=25)
+        before = self.service.get_document(doc_id)
+        status, body = api.dispatch("POST", f"/api/documents/{doc_id}/conversational", {},
+                                    {"action": "CONFIRM", "expected_revision": original["expected_revision"]}, REVIEWER)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["error"]["code"], "STALE_REVISION")
+        self.assertEqual(self.service.get_document(doc_id), before)
+
+    def test_sync_failure_keeps_registration_and_durable_safe_event(self):
+        doc_id = self.send(COVER, T1_GRID)
+        self.wait_for_draft()
+        self.reply(doc_id, reviewer=REVIEWER, action="CHOOSE", patient_id="PAT-000001")
+        self.reply(doc_id, reviewer=REVIEWER, action="CONFIRM")
+        for ack in (None, {}, {"status": "FAILED", "ack_id": "BAD"},
+                    {"status": "ACKNOWLEDGED", "ack_id": ""}):
+            with self.subTest(ack=ack), self.assertRaises(Invalid):
+                self.service.sync_document(doc_id, reviewer=REVIEWER, central_sink=lambda p: ack)
+            self.assertEqual(self.service.get_document(doc_id)["document"]["status"], "REGISTERED")
+        def unavailable(payload):
+            raise ConnectionError("private-payload-must-not-be-logged")
+        with self.assertRaises(ConnectionError):
+            self.service.sync_document(doc_id, reviewer=REVIEWER, central_sink=unavailable)
+        with self.service.store.read() as db:
+            events = db.execute("SELECT detail_json FROM events WHERE document_id = ? AND type = 'SYNC_FAILED'",
+                                (doc_id,)).fetchall()
+            self.assertEqual(len(events), 5)
+            self.assertNotIn("private-payload", repr([dict(row) for row in events]))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM central_sync_log WHERE document_id = ?",
+                                        (doc_id,)).fetchone()[0], 0)
+        result = self.service.sync_document(doc_id, reviewer=REVIEWER)
+        self.assertEqual(result["status"], "SYNCED")
+        self.assertTrue(self.service.sync_document(doc_id, reviewer=REVIEWER)["replayed"])
+
     def test_offline_queue_explicit_states_and_inspection(self):
         with tempfile.TemporaryDirectory() as directory:
             cipher = Cipher(Fernet.generate_key())
@@ -75,7 +140,10 @@ class FinalBackendTest(FlowTestCase):
 
         # Synchronize with simulated central sink
         synced_payloads = []
-        result = self.service.sync_document(doc_id, reviewer=REVIEWER, central_sink=lambda p: synced_payloads.append(p))
+        def acknowledge(payload):
+            synced_payloads.append(payload)
+            return {"status": "ACKNOWLEDGED_SIMULATED", "ack_id": "ACK-TEST"}
+        result = self.service.sync_document(doc_id, reviewer=REVIEWER, central_sink=acknowledge)
         self.assertEqual(result["status"], "SYNCED")
         self.assertFalse(result["replayed"])
         self.assertEqual(len(synced_payloads), 1)
@@ -102,23 +170,24 @@ class FinalBackendTest(FlowTestCase):
         while prompt["step"] == "FIELD":
             field_name = prompt["field"]["field"]
             if field_name == "visit_date":
-                prompt = self.service.conversational_reply(doc_id, reviewer="midwife", action="CORRECT", value="19/12/2025")
+                prompt = self.reply(doc_id, reviewer="midwife", action="CORRECT", value="19/12/2025")
             elif field_name == "fundal_height_cm":
-                prompt = self.service.conversational_reply(doc_id, reviewer="midwife", action="CORRECT", value=25)
+                prompt = self.reply(doc_id, reviewer="midwife", action="CORRECT", value=25)
             elif prompt["field"].get("value") is not None:
-                prompt = self.service.conversational_reply(doc_id, reviewer="midwife", action="CONFIRM")
+                prompt = self.reply(doc_id, reviewer="midwife", action="CONFIRM")
             else:
-                prompt = self.service.conversational_reply(doc_id, reviewer="midwife", action="NOT_PROVIDED")
+                prompt = self.reply(doc_id, reviewer="midwife", action="NOT_PROVIDED")
 
         # Step 2: Query prompt advances to PATIENT
         self.assertEqual(prompt["step"], "PATIENT")
         self.assertIn("CHOOSE", prompt["actions"])
-        prompt = self.service.conversational_reply(doc_id, reviewer="midwife", action="CHOOSE", patient_id="PAT-000001")
+        self.assertIn("PAT-000001", [c["patient_id"] for c in prompt["candidates"]])
+        prompt = self.reply(doc_id, reviewer="midwife", action="CHOOSE", patient_id="PAT-000001")
 
         # Step 3: Query prompt advances to CONFIRM
         self.assertEqual(prompt["step"], "CONFIRM")
         self.assertIn("CONFIRM", prompt["actions"])
-        prompt = self.service.conversational_reply(doc_id, reviewer="midwife", action="CONFIRM")
+        prompt = self.reply(doc_id, reviewer="midwife", action="CONFIRM")
 
         # Step 4: Step is DONE
         self.assertEqual(prompt["step"], "DONE")
@@ -174,7 +243,7 @@ class FinalBackendTest(FlowTestCase):
 
     def test_api_endpoints_sync_conversational_export(self):
         from dayone.server import Api
-        api = Api(self.service)
+        api = self.make_api()
 
         doc_id = self.send(COVER, T1_GRID)
         self.wait_for_draft()
@@ -186,13 +255,13 @@ class FinalBackendTest(FlowTestCase):
 
         # POST conversational reply
         status, body = api.dispatch("POST", f"/api/documents/{doc_id}/conversational", {},
-                                    {"action": "CHOOSE", "patient_id": "PAT-000001"}, REVIEWER)
+                                    {"action": "CHOOSE", "patient_id": "PAT-000001", "expected_revision": body["expected_revision"]}, REVIEWER)
         self.assertEqual(status, 200)
         self.assertEqual(body["step"], "CONFIRM")
 
         # POST conversational confirm
         status, body = api.dispatch("POST", f"/api/documents/{doc_id}/conversational", {},
-                                    {"action": "CONFIRM"}, REVIEWER)
+                                    {"action": "CONFIRM", "expected_revision": body["expected_revision"]}, REVIEWER)
         self.assertEqual(status, 200)
         self.assertEqual(body["step"], "DONE")
 
@@ -217,15 +286,13 @@ class FinalBackendTest(FlowTestCase):
         self.assertEqual(status, 200)
         self.assertIn("csv", body)
         self.assertIn("age (years)", body["csv"])
-        api.close()
 
     def test_api_simulator_offline_flow(self):
         import base64
         from dayone.media import MediaStore
         from dayone.server import Api
         self.service.media_store = MediaStore(Path(self.tmp.name) / "images", Cipher(Fernet.generate_key()))
-        api = Api(self.service)
-        api.offline_queue.reset()
+        api = self.make_api()
 
         img_bytes = (REPO_ROOT / COVER).read_bytes()
         img_b64 = base64.b64encode(img_bytes).decode("ascii")
@@ -256,7 +323,6 @@ class FinalBackendTest(FlowTestCase):
         self.service.tick()
         doc = self.service.get_document(doc_id)
         self.assertIsNotNone(doc)
-        api.close()
 
 
 if __name__ == "__main__":

@@ -1364,6 +1364,7 @@ class DayOneService:
         reviewer = self._reviewer(reviewer)
         now = self.clock()
         target_name = "Registre National des Dossiers Maternels (Simulé)"
+        sync_error = None
         with self.store.tx() as db:
             document = self._load_document(db, document_id)
             if document["status"] == "SYNCED":
@@ -1412,23 +1413,30 @@ class DayOneService:
             if central_sink is not None:
                 try:
                     sink_res = central_sink(sync_payload)
-                    if isinstance(sink_res, dict) and "ack_id" in sink_res:
-                        ack_data["ack_id"] = sink_res["ack_id"]
+                    if (not isinstance(sink_res, dict)
+                            or sink_res.get("status") not in ("ACKNOWLEDGED", "ACKNOWLEDGED_SIMULATED")
+                            or not isinstance(sink_res.get("ack_id"), str)
+                            or not sink_res["ack_id"].strip()):
+                        raise Invalid("SYNC_ACK_REQUIRED", "Le registre doit confirmer la réception avant la synchronisation.")
+                    ack_data["ack_id"] = sink_res["ack_id"]
                 except Exception as exc:
+                    sync_error = exc
                     self._event(db, document_id, "SYNC_FAILED", reviewer, now,
-                                {"error": str(exc), "patient_id": patient_id})
-                    raise
+                                {"error_type": type(exc).__name__, "patient_id": patient_id})
 
-            sync_id = next_id(db, "SYNC")
-            db.execute(
-                "INSERT OR REPLACE INTO central_sync_log(sync_id, document_id, patient_id, ack_id, target, status, payload_json, ack_signature, synced_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sync_id, document_id, patient_id, ack_data["ack_id"], target_name, "ACKNOWLEDGED_SIMULATED",
-                 _dumps(sync_payload), ack_signature, _iso(now)),
-            )
-            self._set_status(db, document_id, "SYNCED", now, actor=reviewer)
-            self._event(db, document_id, "DOCUMENT_SYNCED", reviewer, now,
-                        {"patient_id": patient_id, "visits_count": len(visits), "ack_id": ack_data["ack_id"], "target": target_name})
+            if sync_error is None:
+                sync_id = next_id(db, "SYNC")
+                db.execute(
+                    "INSERT OR REPLACE INTO central_sync_log(sync_id, document_id, patient_id, ack_id, target, status, payload_json, ack_signature, synced_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (sync_id, document_id, patient_id, ack_data["ack_id"], target_name, "ACKNOWLEDGED_SIMULATED",
+                     _dumps(sync_payload), ack_signature, _iso(now)),
+                )
+                self._set_status(db, document_id, "SYNCED", now, actor=reviewer)
+                self._event(db, document_id, "DOCUMENT_SYNCED", reviewer, now,
+                            {"patient_id": patient_id, "visits_count": len(visits), "ack_id": ack_data["ack_id"], "target": target_name})
+        if sync_error is not None:
+            raise sync_error
         return {
             "document_id": document_id, "status": "SYNCED", "synced": True, "replayed": False,
             "target": target_name, "ack": ack_data,
@@ -1535,6 +1543,7 @@ class DayOneService:
                 "step": "PATIENT",
                 "question": q,
                 "suggested_patient_id": candidate_id,
+                "candidates": review.get("candidates", []),
                 "actions": ["CHOOSE", "NEW", "UNSURE"],
                 "document_id": document_id,
                 "expected_revision": d["revision"],
@@ -1544,6 +1553,7 @@ class DayOneService:
                 "step": "EXISTING_VISITS",
                 "question": "Certaines visites existent déjà avec des valeurs différentes. Souhaitez-vous mettre à jour les valeurs ou conserver l'existante ?",
                 "actions": ["UPDATE", "KEEP"],
+                "visits": visits,
                 "document_id": document_id,
                 "expected_revision": d["revision"],
             }
@@ -1560,7 +1570,13 @@ class DayOneService:
         """Processes a midwife's conversational response and returns the updated conversational state."""
         prompt = self.conversational_prompt(document_id)
         step = prompt.get("step")
-        rev = prompt.get("expected_revision")
+        rev = kwargs.get("expected_revision")
+        if prompt.get("expected_revision") is not None:
+            if type(rev) is not int:
+                raise Invalid("REVISION_REQUIRED", "La révision du dossier affiché est requise.")
+            if rev != prompt["expected_revision"]:
+                raise Conflict("STALE_REVISION", "Le dossier a été modifié entre-temps : rechargez-le.",
+                               {"revision": prompt["expected_revision"]})
 
         if step == "FIELD":
             field_info = prompt["field"]
@@ -1619,8 +1635,9 @@ class DayOneService:
                 raise Invalid("UNKNOWN_ACTION", f"Action {action} non reconnue pour l'étape PATIENT.")
 
         elif step == "EXISTING_VISITS":
-            dec = action.upper()
-            decisions = {str(i): dec for i in range(len(prompt.get("visits", [])))}
+            if action.upper() != "CONFIRM":
+                raise Invalid("VISIT_REVIEW_REQUIRED", "Choisissez les valeurs dans le récapitulatif, puis confirmez l'enregistrement.")
+            decisions = kwargs.get("existing_visit_decisions")
             self.confirm(document_id, reviewer=reviewer, existing_visit_decisions=decisions, expected_revision=rev)
 
         elif step == "CONFIRM":
